@@ -152,7 +152,8 @@ export async function setImageBlob(storageKey: string, blob: Blob) {
 }
 
 export async function imageToDataUrl(image: { url?: string; dataUrl?: string; storageKey?: string }, options?: ImageReadOptions) {
-    const url = image.dataUrl || (await resolveImageUrl(image.storageKey, image.url || ""));
+    // storageKey（IndexedDB Blob）是持久化权威来源，dataUrl/url 仅作 fallback；避免 content 被污染时参考链拿到坏地址。
+    const url = image.storageKey ? await resolveImageUrl(image.storageKey, image.dataUrl || image.url || "") : image.dataUrl || image.url || "";
     if (!url || url.startsWith("data:")) return url;
     return blobToDataUrl(await fetchImageBlob(url, options));
 }
