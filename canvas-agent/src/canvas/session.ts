@@ -473,6 +473,8 @@ export class CanvasSession {
         if (name === "canvas_create_attachment_nodes") return await this.createAttachmentNodes(input as { attachmentIds: string[]; x?: number; y?: number; gap?: number; direction?: "row" | "column" });
         if (!this.clients.size) throw new Error("当前没有已连接画布");
         const registry = this.refsFor(this.targetClientId);
+        // 读图由页面执行（IndexedDB 图片降采样转 base64），服务端透传；结果经 mcp.ts 包装为 MCP image content。
+        if (name === "canvas_read_image") return shortenToolNodeRefs(registry, await this.requestCanvasTool(name, resolveToolNodeRefs(registry, input) as Record<string, unknown>));
         const request = buildCanvasToolRequest(name, resolveToolNodeRefs(registry, input) as Record<string, unknown>, this.canvasState);
         return shortenToolNodeRefs(registry, await this.requestCanvasTool(request.name, request.input));
     }

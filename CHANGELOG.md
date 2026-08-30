@@ -2,6 +2,7 @@
 
 ## Unreleased
 
++ [修复] Canvas Agent `canvas_read_image` 服务端缺少透传分支，工具声明后运行时始终报「未知工具」；现转发至页面执行（页面读图实现早已就绪：读 IndexedDB → 降采样 1024 → base64，经 MCP 层包装为 image content），Agent 看图与图片落盘验证链路恢复。
 + [调整] Codex 插件 canvas 技能改为分层读取（概览→节点全文→看图）、短引用和执行回执的新指引，open-canvas 技能与插件 MCP 命令统一加 `@latest` 并补充版本不匹配排查。
 + [新增] Canvas Agent 节点 id 改用稳定短引用（n1、n2…）：概览/回执/邻居全部输出短引用，所有工具入参短引用与真实 id 均可，prompt 中的 @[node:短引用] 自动改写，150 节点画布概览再省约 1K token 且缩短 Agent 输出。
 + [优化] Canvas Agent 画布概览改用表头行文本返回（连线用节点行号引用、status 空值省略），`canvas_get_nodes` 剔除 storageKey/bytes/mimeType 并对重复的 prompt 去重，大幅降低大画布下的返回 token。
