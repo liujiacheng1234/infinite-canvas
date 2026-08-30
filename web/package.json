@@ -13,7 +13,6 @@
     },
     "dependencies": {
         "@ant-design/icons": "^6.1.1",
-        "@ant-design/pro-components": "3.0.0-beta.3",
         "@codemirror/lang-javascript": "^6.2.5",
         "@codemirror/lang-json": "^6.0.2",
         "@tanstack/react-query": "^5.100.9",
@@ -54,5 +53,8 @@
         "prettier": "^3.8.3",
         "typescript": "^5",
         "vite": "^7.3.0"
+    },
+    "allowScripts": {
+        "esbuild@0.28.2": true
     }
 }
