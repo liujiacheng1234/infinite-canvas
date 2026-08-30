@@ -12,7 +12,7 @@ description: 打开 Infinite Canvas 在线或本地画布，并自动连接本�
 1. 启动本地 Canvas Agent 并保持运行：
 
 ```bash
-npx -y @basketikun/canvas-agent
+npx -y @basketikun/canvas-agent@latest
 ```
 
 2. 从启动输出取得 `Local URL` 和 `Connect token`。
@@ -36,7 +36,7 @@ bun run dev
 2. 启动本地 Canvas Agent：
 
 ```bash
-npx -y @basketikun/canvas-agent
+npx -y @basketikun/canvas-agent@latest
 ```
 
 3. 从启动输出取得 `Local URL` 和 `Connect token`，在 Codex 右侧浏览器打开：
@@ -56,3 +56,7 @@ npx -y @basketikun/canvas-agent
 
 - 最近画布：`mode=recent`
 - 自己选择：`mode=choose`
+
+## 版本不匹配
+
+画布页面与本地 Agent 的通信协议版本必须一致。如果页面提示 Agent 版本过旧或连接被拒绝，说明 npx 缓存或已安装的 canvas-agent 是旧版本：先结束旧进程，再用上面的 `@latest` 命令重启，并在画布页面硬刷新（Ctrl+Shift+R）后重新连接。
