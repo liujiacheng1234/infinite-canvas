@@ -1,10 +1,56 @@
 import crypto from "node:crypto";
 
+import type { ShortIdRegistry } from "./short-refs.js";
 import type { ToolName } from "./schemas.js";
 import { nextCanvasX } from "./tools.js";
 import type { CanvasNode, CanvasNodeType, CanvasSnapshot } from "./types.js";
 
 export type CanvasToolRequest = { name: "canvas_apply_ops"; input: Record<string, unknown> };
+
+/** 把 prompt 里的 @[node:短引用] 改写为真实节点 id；非短引用原样保留。 */
+function resolvePromptTokens(prompt: string, registry: ShortIdRegistry) {
+    return prompt.replace(/@\[node:([\w-]+)\]/g, (match, id: string) => {
+        const realId = registry.resolve(id);
+        return realId === id ? match : `@[node:${realId}]`;
+    });
+}
+
+const ID_KEYS = new Set(["nodeId", "fromNodeId", "toNodeId"]);
+const ID_LIST_KEYS = new Set(["ids", "nodeIds", "referenceNodeIds", "selectedNodeIds"]);
+const PROMPT_KEYS = new Set(["prompt", "composerContent"]);
+
+/** 递归解析工具入参里的节点短引用；add_node 的自定义 id 是创建不是引用，保持原样。 */
+export function resolveToolNodeRefs(registry: ShortIdRegistry, value: unknown, key = "", parentType = ""): unknown {
+    if (Array.isArray(value)) return value.map((item) => resolveToolNodeRefs(registry, item, key, parentType));
+    if (!value || typeof value !== "object") {
+        if (typeof value !== "string") return value;
+        if (PROMPT_KEYS.has(key)) return resolvePromptTokens(value, registry);
+        if (key === "id") return parentType === "add_node" ? value : registry.resolve(value);
+        if (ID_KEYS.has(key) || ID_LIST_KEYS.has(key)) return registry.resolve(value);
+        return value;
+    }
+    const record = value as Record<string, unknown>;
+    const nextParentType = typeof record.type === "string" ? record.type : parentType;
+    const result: Record<string, unknown> = {};
+    for (const [entryKey, entryValue] of Object.entries(record)) result[entryKey] = resolveToolNodeRefs(registry, entryValue, entryKey, nextParentType);
+    return result;
+}
+
+/** 把工具返回里的真实节点 id 替换为短引用；id 仅在带 type 字段的对象里缩短，避免误伤连线 id 等非节点标识。 */
+export function shortenToolNodeRefs(registry: ShortIdRegistry, value: unknown, key = "", siblingHasType = false): unknown {
+    if (Array.isArray(value)) return value.map((item) => shortenToolNodeRefs(registry, item, key));
+    if (!value || typeof value !== "object") {
+        if (typeof value !== "string") return value;
+        if (key === "id" && siblingHasType) return registry.shorten(value);
+        if (ID_KEYS.has(key) || ID_LIST_KEYS.has(key)) return registry.shorten(value);
+        return value;
+    }
+    const record = value as Record<string, unknown>;
+    const hasType = "type" in record;
+    const result: Record<string, unknown> = {};
+    for (const [entryKey, entryValue] of Object.entries(record)) result[entryKey] = shortenToolNodeRefs(registry, entryValue, entryKey, hasType);
+    return result;
+}
 
 /** 将上层画布工具调用转换为前端可执行的批量操作。 */
 export function buildCanvasToolRequest(name: ToolName, input: Record<string, unknown>, state: CanvasSnapshot | null): CanvasToolRequest {

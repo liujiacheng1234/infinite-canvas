@@ -3,8 +3,9 @@ import type { ServerResponse } from "node:http";
 
 import type { AgentAttachment } from "../agent/types.js";
 import { logger } from "../utils/logger.js";
-import { buildCanvasToolRequest, fitAttachmentNodeSize } from "./operations.js";
+import { buildCanvasToolRequest, fitAttachmentNodeSize, resolveToolNodeRefs, shortenToolNodeRefs } from "./operations.js";
 import type { ToolName } from "./schemas.js";
+import { ShortIdRegistry } from "./short-refs.js";
 import { isToolName, nextCanvasX, nodeRelations, parseToolInput, renderCanvasOverview, renderNodeRows, slimNodeMetadata } from "./tools.js";
 import type { CanvasSnapshot } from "./types.js";
 
@@ -45,6 +46,7 @@ export class CanvasSession {
     private pending = new Map<string, PendingRequest>();
     private pendingApprovals = new Map<string, Record<string, unknown>>();
     private canvasStates = new Map<string, CanvasSnapshot>();
+    private refRegistries = new Map<string, ShortIdRegistry>();
     private turnAttachments = new Map<string, TurnAttachment>();
     private codexReplayEvents = new Map<string, ReplayEvent>();
     private codexReplayActiveItems = new Set<string>();
@@ -295,6 +297,7 @@ export class CanvasSession {
                 item.reject(new Error("请求页面已断开"));
             });
             if (this.activeClientId === clientId) this.activeClientId = [...this.clients.keys()].sort((a, b) => (this.clientFocusOrder.get(b) || 0) - (this.clientFocusOrder.get(a) || 0))[0] || "";
+            this.refRegistries.delete(clientId);
         });
     }
 
@@ -311,6 +314,7 @@ export class CanvasSession {
         if (!targetClientId || !this.clients.has(targetClientId)) return;
         const state = { ...((body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>), clientId: targetClientId } as CanvasSnapshot;
         this.canvasStates.set(targetClientId, state);
+        this.refsFor(targetClientId).ensure(String(state.projectId || ""), state.nodes || []);
         logger.debug("Canvas state updated", { clientId: targetClientId, nodes: state.nodes?.length || 0, connections: state.connections?.length || 0 });
     }
 
@@ -436,6 +440,18 @@ export class CanvasSession {
         });
     }
 
+    /** 获取指定网页的短引用注册表，不存在则创建。 */
+    private refsFor(clientId: string) {
+        let registry = this.refRegistries.get(clientId);
+        if (!registry) {
+            registry = new ShortIdRegistry();
+            this.refRegistries.set(clientId, registry);
+            const state = this.canvasStates.get(clientId);
+            if (state) registry.ensure(String(state.projectId || ""), state.nodes || []);
+        }
+        return registry;
+    }
+
     /** 校验工具参数并将调用分派到当前目标网页。 */
     async callTool(name: unknown, rawInput: unknown) {
         if (!isToolName(name)) throw new Error(`未知工具：${String(name)}`);
@@ -448,16 +464,17 @@ export class CanvasSession {
         const state = this.canvasState;
         const readTool = ["canvas_get_state", "canvas_get_selection", "canvas_get_nodes"].includes(name);
         if (readTool && (!this.clients.size || !state)) throw new Error("当前没有已连接画布");
-        if (name === "canvas_get_state") return renderCanvasOverview(state);
+        if (name === "canvas_get_state") return renderCanvasOverview(state, this.refsFor(this.targetClientId));
         if (name === "canvas_get_nodes") return this.getNodesDetailed((input as { ids: string[] }).ids);
         if (name === "canvas_get_selection") {
             const ids = new Set(state?.selectedNodeIds || []);
-            return renderNodeRows((state?.nodes || []).filter((node) => ids.has(node.id))).join("\n");
+            return renderNodeRows((state?.nodes || []).filter((node) => ids.has(node.id)), this.refsFor(this.targetClientId)).join("\n");
         }
         if (name === "canvas_create_attachment_nodes") return await this.createAttachmentNodes(input as { attachmentIds: string[]; x?: number; y?: number; gap?: number; direction?: "row" | "column" });
         if (!this.clients.size) throw new Error("当前没有已连接画布");
-        const request = buildCanvasToolRequest(name, input, this.canvasState);
-        return await this.requestCanvasTool(request.name, request.input);
+        const registry = this.refsFor(this.targetClientId);
+        const request = buildCanvasToolRequest(name, resolveToolNodeRefs(registry, input) as Record<string, unknown>, this.canvasState);
+        return shortenToolNodeRefs(registry, await this.requestCanvasTool(request.name, request.input));
     }
 
     /** 将当前 turn 的附件转换为画布图片节点。 */
@@ -484,24 +501,33 @@ export class CanvasSession {
             return node;
         });
         await this.requestCanvasTool("canvas_create_attachment_nodes", { nodes });
-        return { nodes: nodes.map(({ id, attachmentId, title }) => ({ id, attachmentId, title })) };
+        return { nodes: nodes.map(({ id, attachmentId, title }) => ({ id: this.refsFor(clientId).shorten(id), attachmentId, title })) };
     }
 
-    /** 返回指定节点的完整 metadata 和上下游邻居，供 Agent 读全文和评估删除/改连线影响。 */
+    /** 返回指定节点的完整 metadata 和上下游邻居，供 Agent 读全文和评估删除/改连线影响；id 输出为短引用。 */
     private getNodesDetailed(ids: string[]) {
         const state = this.canvasState;
         if (!state) throw new Error("当前没有已连接画布");
+        const registry = this.refsFor(this.targetClientId);
         const nodes = state.nodes || [];
         const byId = new Map(nodes.map((node) => [node.id, node]));
         const found: unknown[] = [];
         const missing: string[] = [];
         ids.forEach((id) => {
-            const node = byId.get(id);
+            const realId = registry.resolve(id);
+            const node = byId.get(realId);
             if (!node) {
                 missing.push(id);
                 return;
             }
-            found.push({ ...slimNodeMetadata(node), ...nodeRelations(nodes, state.connections || [], node.id) });
+            const relations = nodeRelations(nodes, state.connections || [], node.id);
+            const shortenId = (item: { id: string; type: string; title?: string }) => ({ ...item, id: registry.shorten(item.id) });
+            found.push({
+                ...slimNodeMetadata(node),
+                id: registry.shorten(node.id),
+                upstream: relations.upstream.map(shortenId),
+                downstream: relations.downstream.map(shortenId),
+            });
         });
         return { nodes: found, missing };
     }

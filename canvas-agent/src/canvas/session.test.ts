@@ -86,7 +86,8 @@ test("当前 turn 的图片附件可在发起标签页画布创建图片节点",
 
     session.resolveResult("first", { requestId: String(field(call, "requestId")), result: { ok: true } });
     const created = (await result) as { nodes: Array<{ id: string; attachmentId: string; title: string }> };
-    assert.equal(created.nodes[0].id, nodes[0].id);
+    assert.match(created.nodes[0].id, /^n\d+$/);
+    assert.notEqual(created.nodes[0].id, nodes[0].id);
     assert.equal(created.nodes[0].attachmentId, "attachment-1");
     session.clearTurnAttachments("first");
     assert.throws(() => session.getTurnAttachment("first", "attachment-1"), /找不到/);
@@ -581,3 +582,54 @@ class FakeSseResponse extends EventEmitter {
         this.emit("close");
     }
 }
+
+test("节点短引用在概览、读取和写入之间闭环", async (t) => {
+    const session = new CanvasSession();
+    const client = connect(session, "first");
+    t.after(() => client.close());
+    session.updateState(
+        {
+            projectId: "p1",
+            title: "p1",
+            nodes: [
+                { id: "text-long-uuid-1", type: "text", title: "提示词", position: { x: 0, y: 0 }, width: 340, height: 240, metadata: { content: "一只猫", status: "success" } },
+                { id: "config-long-uuid-2", type: "config", title: "图片生成", position: { x: 420, y: 0 }, width: 340, height: 420, metadata: { status: "idle" } },
+            ],
+            connections: [{ id: "conn-1", fromNodeId: "text-long-uuid-1", toNodeId: "config-long-uuid-2" }],
+            selectedNodeIds: [],
+            viewport: { x: 0, y: 0, k: 1 },
+        },
+        "first",
+    );
+    session.activateClient("first");
+
+    const overview = String(await session.callTool("canvas_get_state", {}));
+    assert.match(overview, /,n1,text,/);
+    assert.match(overview, /,n2,config,/);
+    assert.match(overview, /connections\[1\]\{from,to\}:\n0,1/);
+    assert.doesNotMatch(overview, /text-long-uuid-1/);
+
+    const detail = (await session.callTool("canvas_get_nodes", { ids: ["n1", "missing-short"] })) as { nodes: Array<Record<string, unknown>>; missing: string[] };
+    assert.equal(detail.nodes[0].id, "n1");
+    assert.equal(detail.nodes[0].metadata.content, "一只猫");
+    assert.equal(field(detail.nodes[0].downstream[0], "id"), "n2");
+    assert.deepEqual(detail.missing, ["missing-short"]);
+
+    const update = session.callTool("canvas_update_node", { id: "n2", patch: { title: "新标题" } });
+    const updateCall = client.event("tool_call");
+    const ops = (field(updateCall, "input") as { ops: Array<Record<string, unknown>> }).ops;
+    assert.equal(ops[0].id, "config-long-uuid-2");
+    session.resolveResult("first", { requestId: String(field(updateCall, "requestId")), result: { ok: true, opResults: [{ op: "update_node", ok: true, nodeId: "config-long-uuid-2" }], created: [], removedConnections: [] } });
+    const receipt = (await update) as { opResults: Array<{ nodeId?: string }> };
+    assert.equal(receipt.opResults[0].nodeId, "n2");
+
+    const flow = session.callTool("canvas_generate_image", { prompt: "参考 @[node:n1] 的风格", referenceNodeIds: ["n1"] });
+    const flowCall = client.events("tool_call")[1];
+    assert.ok(flowCall);
+    const flowOps = (field(flowCall, "input") as { ops: Array<Record<string, unknown>> }).ops;
+    const config = flowOps.find((op) => op.type === "add_node" && op.nodeType === "config");
+    assert.match(String((config?.metadata as Record<string, unknown>).prompt), /@\[node:text-long-uuid-1\]/);
+    assert.equal(flowOps.some((op) => op.type === "connect_nodes" && op.fromNodeId === "text-long-uuid-1"), true);
+    session.resolveResult("first", { requestId: String(field(flowCall, "requestId")), result: { ok: true } });
+    await flow;
+});

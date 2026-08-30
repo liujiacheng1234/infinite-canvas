@@ -2,6 +2,7 @@
 
 ## Unreleased
 
++ [新增] Canvas Agent 节点 id 改用稳定短引用（n1、n2…）：概览/回执/邻居全部输出短引用，所有工具入参短引用与真实 id 均可，prompt 中的 @[node:短引用] 自动改写，150 节点画布概览再省约 1K token 且缩短 Agent 输出。
 + [优化] Canvas Agent 画布概览改用表头行文本返回（连线用节点行号引用、status 空值省略），`canvas_get_nodes` 剔除 storageKey/bytes/mimeType 并对重复的 prompt 去重，大幅降低大画布下的返回 token。
 + [新增] Canvas Agent 新增 `canvas_get_nodes` 和 `canvas_read_image` 工具：按 id 读取节点完整 metadata 和上下游邻居，按需读取一张图片内容；Agent 首次具备读全文和看图能力。
 + [新增] Canvas Agent 新增 `canvas_disconnect_nodes` 工具，按 from/to 断开节点连线。

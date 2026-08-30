@@ -1,4 +1,5 @@
 import { toolInputSchemas, toolNames, type ToolName } from "./schemas.js";
+import type { ShortIdRegistry } from "./short-refs.js";
 import type { CanvasConnection, CanvasNode, CanvasSnapshot } from "./types.js";
 
 /** 判断传入名称是否为已注册的画布工具。 */
@@ -19,8 +20,8 @@ function csvField(value: unknown) {
 
 const NODE_COLUMNS = "{i,id,type,title,x,y,w,h,mode,status,imgs,error}";
 
-/** 把节点列表渲染成表头行格式的行表，比 JSON 节省约一半 token。 */
-export function renderNodeRows(nodes: CanvasNode[]) {
+/** 把节点列表渲染成表头行格式的行表，id 列输出短引用，比 JSON 节省约一半 token。 */
+export function renderNodeRows(nodes: CanvasNode[], registry: ShortIdRegistry) {
     const lines = [`nodes[${nodes.length}]${NODE_COLUMNS}:`];
     nodes.forEach((node, index) => {
         const metadata = (node.metadata || {}) as Record<string, unknown>;
@@ -29,21 +30,21 @@ export function renderNodeRows(nodes: CanvasNode[]) {
         const primaryId = typeof metadata.primaryImageId === "string" ? metadata.primaryImageId : "";
         const primary = images.find((image) => image.id === primaryId) || images[0];
         const imgs = images.length ? `${images.length}:${primary?.naturalWidth}x${primary?.naturalHeight}` : "-";
-        lines.push([index, node.id, node.type, node.title, node.position?.x, node.position?.y, node.width, node.height, metadata.generationMode, status, imgs, metadata.errorDetails].map(csvField).join(","));
+        lines.push([index, registry.shorten(node.id), node.type, node.title, node.position?.x, node.position?.y, node.width, node.height, metadata.generationMode, status, imgs, metadata.errorDetails].map(csvField).join(","));
     });
     return lines;
 }
 
-/** 画布结构概览渲染成表头行文本：canvas/viewport/selected 头部 + 节点行表 + 连线下标对。 */
-export function renderCanvasOverview(state: CanvasSnapshot | null) {
+/** 画布结构概览渲染成表头行文本：canvas/viewport/selected 头部 + 节点行表 + 连线行号对。 */
+export function renderCanvasOverview(state: CanvasSnapshot | null, registry: ShortIdRegistry) {
     if (!state) throw new Error("当前没有已连接画布");
     const nodes = state.nodes || [];
     const lines = [
         `canvas ${state.projectId || "-"} ${csvField(state.title)}`,
         `viewport ${state.viewport ? `${state.viewport.x},${state.viewport.y},${state.viewport.k}` : "-"}`,
-        `selected ${state.selectedNodeIds?.length ? state.selectedNodeIds.join(",") : "-"}`,
+        `selected ${state.selectedNodeIds?.length ? state.selectedNodeIds.map((id) => registry.shorten(id)).join(",") : "-"}`,
     ];
-    lines.push(...renderNodeRows(nodes));
+    lines.push(...renderNodeRows(nodes, registry));
     const connections = state.connections || [];
     const indexOf = new Map(nodes.map((node, index) => [node.id, index]));
     lines.push(`connections[${connections.length}]{from,to}:`);
