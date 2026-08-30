@@ -19,8 +19,22 @@ function registerCanvasTool(server: McpServer, config: CanvasAgentConfig, name: 
     const schema = toolInputSchemas[name];
     server.registerTool(name, { description: toolDescriptions[name], inputSchema: schema.shape }, async (input: unknown) => {
         const result = await postCanvasAgentTool(config, name, schema.parse(input));
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        return toToolContent(result);
     });
+}
+
+/** 结果携带 image 字段时输出 MCP 图像内容，便于多模态客户端直接看图；其余字段仍以 JSON 返回。 */
+function toToolContent(result: unknown) {
+    const record = result && typeof result === "object" ? (result as Record<string, unknown>) : {};
+    const image = record.image as { data?: unknown; mimeType?: unknown } | undefined;
+    if (typeof image?.data !== "string") return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    const { image: _image, ...rest } = record;
+    return {
+        content: [
+            { type: "image" as const, data: image.data, mimeType: typeof image.mimeType === "string" ? image.mimeType : "image/png" },
+            { type: "text" as const, text: JSON.stringify(rest, null, 2) },
+        ],
+    };
 }
 
 /** 将 MCP 工具调用转发到本地 Canvas Agent HTTP 服务。 */

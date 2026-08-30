@@ -707,7 +707,8 @@ function toolName(name: string) {
     if (name === "canvas_apply_ops") return "画布操作";
     if (name === "canvas_get_state") return "读取画布";
     if (name === "canvas_get_selection") return "读取选区";
-    if (name === "canvas_export_snapshot") return "导出快照";
+    if (name === "canvas_get_nodes") return "读取节点内容";
+    if (name === "canvas_read_image") return "读取图片";
     if (name === "canvas_create_node") return "创建节点";
     if (name === "canvas_create_attachment_nodes") return "添加附件图片";
     if (name === "canvas_create_text_node") return "创建文本";
@@ -725,6 +726,7 @@ function toolName(name: string) {
     if (name === "canvas_resize_node") return "调整节点尺寸";
     if (name === "canvas_delete_nodes") return "删除节点";
     if (name === "canvas_connect_nodes") return "连接节点";
+    if (name === "canvas_disconnect_nodes") return "断开连线";
     if (name === "canvas_select_nodes") return "选择节点";
     if (name === "canvas_set_viewport") return "调整视口";
     if (name === "canvas_run_generation") return "触发生成";

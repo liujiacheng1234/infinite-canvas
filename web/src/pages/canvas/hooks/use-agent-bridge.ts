@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type Dispatch, type MutableR
 
 import i18n from "@/i18n";
 import { useAgentStore } from "@/stores/use-agent-store";
-import { applyCanvasAgentOps, type CanvasAgentOp, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
+import { applyCanvasAgentOps, type CanvasAgentApplyReceipt, type CanvasAgentOp, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import type { CanvasConnection, CanvasNodeData, ContextMenuState, ViewportTransform } from "@/types/canvas";
 
@@ -40,12 +40,12 @@ export function useAgentBridge(params: AgentBridgeParams) {
     const projectTitle = title || i18n.t("canvas.project.untitled");
 
     const agentSnapshot = useMemo<CanvasAgentSnapshot>(() => ({ projectId, title: projectTitle, nodes, connections, selectedNodeIds: Array.from(selectedNodeIds), viewport }), [connections, projectTitle, nodes, projectId, selectedNodeIds, viewport]);
-    const applyAgentOps = useCallback(
-        (ops?: CanvasAgentOp[]) => {
+    const runAgentOps = useCallback(
+        (ops?: CanvasAgentOp[]): { snapshot: CanvasAgentSnapshot; receipt: CanvasAgentApplyReceipt } => {
             const safeOps = Array.isArray(ops) ? ops.filter((op) => op?.type) : [];
             const before = { projectId, title: projectTitle, nodes: nodesRef.current, connections: connectionsRef.current, selectedNodeIds: Array.from(selectedNodeIdsRef.current), viewport: viewportRef.current };
             const generationOps = safeOps.filter((op): op is Extract<CanvasAgentOp, { type: "run_generation" }> => op.type === "run_generation" && Boolean(op.nodeId));
-            const next = applyCanvasAgentOps(
+            const { snapshot: next, receipt } = applyCanvasAgentOps(
                 before,
                 safeOps.filter((op) => op.type !== "run_generation"),
             );
@@ -60,7 +60,9 @@ export function useAgentBridge(params: AgentBridgeParams) {
             setSelectedConnectionId(null);
             setViewport(next.viewport);
             setContextMenu(null);
+            const opResults = [...receipt.opResults];
             if (generationOps.length) {
+                const canGenerate = Boolean(generateNodeRef.current);
                 queueMicrotask(() =>
                     generationOps.forEach((op) => {
                         const target = nodesRef.current.find((node) => node.id === op.nodeId);
@@ -68,11 +70,13 @@ export function useAgentBridge(params: AgentBridgeParams) {
                         void generateNodeRef.current?.(op.nodeId, op.mode || target?.metadata?.generationMode || "image", prompt);
                     }),
                 );
+                generationOps.forEach((op) => opResults.push(canGenerate ? { op: "run_generation", ok: true, nodeId: op.nodeId } : { op: "run_generation", ok: false, nodeId: op.nodeId, error: "画布未就绪，无法触发生成" }));
             }
-            return { ...next, projectId, title: projectTitle };
+            return { snapshot: { ...next, projectId, title: projectTitle }, receipt: { opResults, created: receipt.created, removedConnections: receipt.removedConnections } };
         },
         [projectTitle, projectId],
     );
+    const applyAgentOps = useCallback((ops?: CanvasAgentOp[]) => runAgentOps(ops).snapshot, [runAgentOps]);
     const undoAgentOps = useCallback(() => {
         if (!agentUndoSnapshot) return null;
         nodesRef.current = agentUndoSnapshot.nodes;
@@ -90,9 +94,9 @@ export function useAgentBridge(params: AgentBridgeParams) {
     }, [agentUndoSnapshot, projectTitle, projectId]);
 
     useEffect(() => {
-        setAgentCanvasContext({ snapshot: agentSnapshot, applyOps: applyAgentOps, undoOps: undoAgentOps, canUndo: Boolean(agentUndoSnapshot) });
+        setAgentCanvasContext({ snapshot: agentSnapshot, applyOps: applyAgentOps, applyOpsWithReceipt: runAgentOps, undoOps: undoAgentOps, canUndo: Boolean(agentUndoSnapshot) });
         return () => setAgentCanvasContext(null);
-    }, [agentSnapshot, applyAgentOps, agentUndoSnapshot, setAgentCanvasContext, undoAgentOps]);
+    }, [agentSnapshot, applyAgentOps, runAgentOps, agentUndoSnapshot, setAgentCanvasContext, undoAgentOps]);
 
     return { applyAgentOps };
 }

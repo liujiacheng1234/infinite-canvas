@@ -105,14 +105,14 @@ args = ["-y", "@basketikun/canvas-agent", "mcp"]
 default_tools_approval_mode = "approve"
 ```
 
-可用工具：
+可用工具（完整入参见 `src/canvas/schemas.ts`）：
 
-- `canvas_get_state`
-- `canvas_get_selection`
-- `canvas_export_snapshot`
-- `canvas_apply_ops`
-- `canvas_create_text_node`
-- `canvas_create_image_prompt_flow`
+- 读取：`canvas_get_state`（结构概览）、`canvas_get_selection`（选中节点）、`canvas_get_nodes`（按 id 读完整 metadata + 上下游邻居）、`canvas_read_image`（读取一张图片内容）
+- 写入：`canvas_apply_ops`（批量 ops）、`canvas_create_node`、`canvas_create_text_node`、`canvas_create_text_nodes`、`canvas_create_config_node`、`canvas_create_image_prompt_flow`、`canvas_create_generation_flow`、`canvas_create_attachment_nodes`、`canvas_update_node`、`canvas_update_node_text`、`canvas_move_nodes`、`canvas_resize_node`、`canvas_delete_nodes`、`canvas_connect_nodes`、`canvas_disconnect_nodes`、`canvas_select_nodes`、`canvas_set_viewport`
+- 生成：`canvas_generate_text`、`canvas_generate_image`、`canvas_generate_video`、`canvas_generate_audio`、`canvas_run_generation`、`generation_get_status`
+- 站点：`site_navigate`、`canvas_list_projects`、`workbench_image_get_config`、`workbench_image_generate`、`workbench_video_get_config`、`workbench_video_generate`、`prompts_search`、`assets_list`、`assets_add`
+
+写入工具统一返回执行回执：`opResults` 逐条报告每个 op 成功/失败及原因，`created` 列出新建节点 id，`removedConnections` 列出被断开的连线，不再返回全量快照。
 
 `canvas_apply_ops` 示例：
 

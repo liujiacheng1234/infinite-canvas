@@ -2,6 +2,10 @@
 
 ## Unreleased
 
++ [新增] Canvas Agent 新增 `canvas_get_nodes` 和 `canvas_read_image` 工具：按 id 读取节点完整 metadata 和上下游邻居，按需读取一张图片内容；Agent 首次具备读全文和看图能力。
++ [新增] Canvas Agent 新增 `canvas_disconnect_nodes` 工具，按 from/to 断开节点连线。
++ [调整] 画布写入工具统一返回执行回执（每个 op 的成功/失败/原因、新建节点 id、被断开的连线），不再返回全量快照，避免大画布下上下文爆炸，也让 Agent 能立即发现失败的操作。
++ [调整] `canvas_get_state` 改为纯结构概览（含节点状态和图片摘要），不再携带节点内容；移除与读状态重复的 `canvas_export_snapshot` 工具。
 + [修复] 移除未使用的 `@ant-design/pro-components` 依赖，npm 安装不再因 antd 6 peer 依赖冲突失败。
 
 + [修复] 文档站默认英文路径不再因内部语言重写产生重定向循环。

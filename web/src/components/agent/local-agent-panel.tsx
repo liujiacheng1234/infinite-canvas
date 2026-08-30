@@ -19,7 +19,8 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { useAgentSkillStore } from "@/stores/use-agent-skill-store";
 import { useShallow } from "zustand/react/shallow";
 import { useAgentStore, type AgentAttachment, type AgentBootstrapStatus, type AgentCanvasContext, type AgentCanvasReference, type AgentChatItem, type AgentConversationState, type AgentModel, type AgentPendingApproval, type AgentPendingToolCall, type AgentPermissionMode, type AgentReasoningEffort, type AgentThreadSummary } from "@/stores/use-agent-store";
-import { type CanvasAgentOp, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
+import { type CanvasAgentOp } from "@/lib/canvas/canvas-agent-ops";
+import { readCanvasNodeImage } from "@/lib/canvas/canvas-image-reader";
 import { isSiteTool, runSiteTool } from "@/lib/agent/agent-site-tools";
 import { acknowledgeCodexHistory, activateAgentClient, AgentApiError, discoverAgentConfig, fetchAgentJson, interruptCodexTurn, postCodexApproval, postState, postToolResult } from "@/services/api/canvas-agent";
 import { AgentChatTimeline, AgentTaskProgress, AgentUsageBar } from "./agent-chat";
@@ -72,7 +73,7 @@ const MAX_ATTACHMENT_PAYLOAD_BYTES = 28 * 1024 * 1024;
 const MESSAGE_PREVIEW_LONG_EDGE = 192;
 const MESSAGE_PREVIEW_MAX_LENGTH = 500_000;
 const DEFAULT_AGENT_URL = "http://127.0.0.1:17371";
-const AGENT_PROTOCOL_VERSION = 6;
+const AGENT_PROTOCOL_VERSION = 7;
 const HISTORY_RETRY_DELAYS_MS = [0, 150, 350, 700, 1200];
 const AGENT_REASONING_EFFORTS = new Set<AgentReasoningEffort>(["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
 const rt = (key: string, options?: Record<string, unknown>) => i18n.t(`agent.runtime.${key}`, options);
@@ -829,18 +830,22 @@ export function LocalAgentPanel({ embedded, headless, autoConnect }: { embedded?
             } else if (payload.name === "canvas_apply_ops") {
                 const context = canvasContextRef.current;
                 if (!context) throw new Error(rt("openCanvasFirst"));
-                result = context.applyOps(appliedOps);
-                void postState(endpoint, token, clientIdRef.current, result as CanvasAgentSnapshot);
+                const { snapshot, receipt } = context.applyOpsWithReceipt(appliedOps);
+                result = { ok: receipt.opResults.every((item) => item.ok), ...receipt, nodeCount: snapshot.nodes.length, connectionCount: snapshot.connections.length, selectedNodeIds: snapshot.selectedNodeIds, hint: rt("opsReceiptHint") };
+                void postState(endpoint, token, clientIdRef.current, snapshot);
             } else if (payload.name === "canvas_create_attachment_nodes") {
                 const context = canvasContextRef.current;
                 if (!context) throw new Error(rt("openCanvasFirst"));
                 appliedOps = await attachmentNodeOps(endpoint, token, clientIdRef.current, payload.input?.nodes);
-                result = context.applyOps(appliedOps);
-                await postState(endpoint, token, clientIdRef.current, result as CanvasAgentSnapshot);
-            } else {
+                const { snapshot, receipt } = context.applyOpsWithReceipt(appliedOps);
+                result = { ok: receipt.opResults.every((item) => item.ok), ...receipt };
+                await postState(endpoint, token, clientIdRef.current, snapshot);
+            } else if (payload.name === "canvas_read_image") {
                 const snapshot = canvasContextRef.current?.snapshot;
                 if (!snapshot) throw new Error(rt("openCanvasFirst"));
-                result = snapshot;
+                result = await readCanvasNodeImage(snapshot, payload.input || {});
+            } else {
+                result = { ok: false, error: rt("unknownCanvasTool", { name: payload.name }) };
             }
             await postToolResult(endpoint, token, clientIdRef.current, { requestId: payload.requestId, result });
             addEventLog(rt("toolCompleted", { tool: toolName(payload.name) }), result, result);

@@ -5,7 +5,7 @@ import type { AgentAttachment } from "../agent/types.js";
 import { logger } from "../utils/logger.js";
 import { buildCanvasToolRequest, fitAttachmentNodeSize } from "./operations.js";
 import type { ToolName } from "./schemas.js";
-import { compactCanvasState, compactNode, isToolName, nextCanvasX, parseToolInput } from "./tools.js";
+import { compactCanvasState, compactNode, isToolName, nextCanvasX, nodeRelations, parseToolInput } from "./tools.js";
 import type { CanvasSnapshot } from "./types.js";
 
 type PendingRequest = { clientId: string; resolve: (value: unknown) => void; reject: (error: Error) => void };
@@ -23,7 +23,7 @@ export type ConversationState = {
     error?: string;
 };
 type McpInventoryItem = { name: string; authStatus?: string };
-export const AGENT_PROTOCOL_VERSION = 6;
+export const AGENT_PROTOCOL_VERSION = 7;
 
 const SITE_TOOLS = new Set<ToolName>([
     "site_navigate",
@@ -445,9 +445,10 @@ export class CanvasSession {
             if (!this.clients.size) throw new Error("当前没有已连接网页");
             return await this.requestCanvasTool(name, input);
         }
-        const readTool = ["canvas_get_state", "canvas_get_selection", "canvas_export_snapshot"].includes(name);
+        const readTool = ["canvas_get_state", "canvas_get_selection", "canvas_get_nodes"].includes(name);
         if (readTool && (!this.clients.size || !this.canvasState)) throw new Error("当前没有已连接画布");
-        if (name === "canvas_get_state" || name === "canvas_export_snapshot") return compactCanvasState(this.canvasState);
+        if (name === "canvas_get_state") return compactCanvasState(this.canvasState);
+        if (name === "canvas_get_nodes") return this.getNodesDetailed((input as { ids: string[] }).ids);
         if (name === "canvas_get_selection") {
             const ids = new Set(this.canvasState?.selectedNodeIds || []);
             return { nodes: (this.canvasState?.nodes || []).filter((node) => ids.has(node.id)).map(compactNode) };
@@ -483,6 +484,25 @@ export class CanvasSession {
         });
         await this.requestCanvasTool("canvas_create_attachment_nodes", { nodes });
         return { nodes: nodes.map(({ id, attachmentId, title }) => ({ id, attachmentId, title })) };
+    }
+
+    /** 返回指定节点的完整 metadata 和上下游邻居，供 Agent 读全文和评估删除/改连线影响。 */
+    private getNodesDetailed(ids: string[]) {
+        const state = this.canvasState;
+        if (!state) throw new Error("当前没有已连接画布");
+        const nodes = state.nodes || [];
+        const byId = new Map(nodes.map((node) => [node.id, node]));
+        const found: unknown[] = [];
+        const missing: string[] = [];
+        ids.forEach((id) => {
+            const node = byId.get(id);
+            if (!node) {
+                missing.push(id);
+                return;
+            }
+            found.push({ ...node, ...nodeRelations(nodes, state.connections || [], node.id) });
+        });
+        return { nodes: found, missing };
     }
 
     /** 向目标网页发送工具请求并等待调用结果。 */
