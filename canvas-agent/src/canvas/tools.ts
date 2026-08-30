@@ -35,7 +35,8 @@ export function renderNodeRows(nodes: CanvasNode[]) {
 }
 
 /** 画布结构概览渲染成表头行文本：canvas/viewport/selected 头部 + 节点行表 + 连线下标对。 */
-export function renderCanvasOverview(state: CanvasSnapshot) {
+export function renderCanvasOverview(state: CanvasSnapshot | null) {
+    if (!state) throw new Error("当前没有已连接画布");
     const nodes = state.nodes || [];
     const lines = [
         `canvas ${state.projectId || "-"} ${csvField(state.title)}`,

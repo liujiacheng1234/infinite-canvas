@@ -445,13 +445,14 @@ export class CanvasSession {
             if (!this.clients.size) throw new Error("当前没有已连接网页");
             return await this.requestCanvasTool(name, input);
         }
+        const state = this.canvasState;
         const readTool = ["canvas_get_state", "canvas_get_selection", "canvas_get_nodes"].includes(name);
-        if (readTool && (!this.clients.size || !this.canvasState)) throw new Error("当前没有已连接画布");
-        if (name === "canvas_get_state") return renderCanvasOverview(this.canvasState);
+        if (readTool && (!this.clients.size || !state)) throw new Error("当前没有已连接画布");
+        if (name === "canvas_get_state") return renderCanvasOverview(state);
         if (name === "canvas_get_nodes") return this.getNodesDetailed((input as { ids: string[] }).ids);
         if (name === "canvas_get_selection") {
-            const ids = new Set(this.canvasState?.selectedNodeIds || []);
-            return renderNodeRows((this.canvasState?.nodes || []).filter((node) => ids.has(node.id))).join("\n");
+            const ids = new Set(state?.selectedNodeIds || []);
+            return renderNodeRows((state?.nodes || []).filter((node) => ids.has(node.id))).join("\n");
         }
         if (name === "canvas_create_attachment_nodes") return await this.createAttachmentNodes(input as { attachmentIds: string[]; x?: number; y?: number; gap?: number; direction?: "row" | "column" });
         if (!this.clients.size) throw new Error("当前没有已连接画布");
