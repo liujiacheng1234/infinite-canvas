@@ -25,3 +25,18 @@ test("generation flow still creates a prompt node for prose prompts", () => {
     const config = ops.find((op) => op.type === "add_node" && op.nodeType === "config");
     assert.match(String(config?.metadata?.prompt), /@\[node:text-/);
 });
+
+test("update_node_text on non-text nodes only patches title (metadata.content is media URL)", () => {
+    const request = buildCanvasToolRequest("canvas_update_node_text", { id: "img-1", text: "新标题", title: "新标题" }, { nodes: [{ id: "img-1", type: "image", position: { x: 0, y: 0 }, width: 100, height: 100 }] });
+    const op = (request.input as { ops: Array<Record<string, any>> }).ops[0];
+    assert.equal(op.type, "update_node");
+    assert.equal(op.patch.title, "新标题");
+    assert.equal(op.metadata, undefined);
+});
+
+test("update_node_text on text nodes still writes metadata.content", () => {
+    const request = buildCanvasToolRequest("canvas_update_node_text", { id: "text-1", text: "正文", title: "标题" }, { nodes: [{ id: "text-1", type: "text", position: { x: 0, y: 0 }, width: 100, height: 100 }] });
+    const op = (request.input as { ops: Array<Record<string, any>> }).ops[0];
+    assert.equal(op.patch.title, "标题");
+    assert.equal(op.metadata.content, "正文");
+});

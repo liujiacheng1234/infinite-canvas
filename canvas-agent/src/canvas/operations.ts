@@ -89,6 +89,10 @@ export function buildCanvasToolRequest(name: ToolName, input: Record<string, unk
     }
     if (name === "canvas_update_node_text") {
         const data = input as { id: string; text: string; title?: string };
+        // 非文本节点的 metadata.content 是媒体地址（如 image 的图片 URL），不能被 text 覆盖，只允许改 title。
+        if (findNode(state, data.id)?.type !== "text") {
+            return applyOps([{ type: "update_node", id: data.id, patch: { ...(data.title ? { title: data.title } : {}) } }]);
+        }
         return applyOps([{ type: "update_node", id: data.id, patch: { ...(data.title ? { title: data.title } : {}) }, metadata: { content: data.text, status: "success" } }]);
     }
     if (name === "canvas_move_nodes") {
