@@ -5,7 +5,7 @@ import type { AgentAttachment } from "../agent/types.js";
 import { logger } from "../utils/logger.js";
 import { buildCanvasToolRequest, fitAttachmentNodeSize } from "./operations.js";
 import type { ToolName } from "./schemas.js";
-import { compactCanvasState, compactNode, isToolName, nextCanvasX, nodeRelations, parseToolInput } from "./tools.js";
+import { isToolName, nextCanvasX, nodeRelations, parseToolInput, renderCanvasOverview, renderNodeRows, slimNodeMetadata } from "./tools.js";
 import type { CanvasSnapshot } from "./types.js";
 
 type PendingRequest = { clientId: string; resolve: (value: unknown) => void; reject: (error: Error) => void };
@@ -447,11 +447,11 @@ export class CanvasSession {
         }
         const readTool = ["canvas_get_state", "canvas_get_selection", "canvas_get_nodes"].includes(name);
         if (readTool && (!this.clients.size || !this.canvasState)) throw new Error("当前没有已连接画布");
-        if (name === "canvas_get_state") return compactCanvasState(this.canvasState);
+        if (name === "canvas_get_state") return renderCanvasOverview(this.canvasState);
         if (name === "canvas_get_nodes") return this.getNodesDetailed((input as { ids: string[] }).ids);
         if (name === "canvas_get_selection") {
             const ids = new Set(this.canvasState?.selectedNodeIds || []);
-            return { nodes: (this.canvasState?.nodes || []).filter((node) => ids.has(node.id)).map(compactNode) };
+            return renderNodeRows((this.canvasState?.nodes || []).filter((node) => ids.has(node.id))).join("\n");
         }
         if (name === "canvas_create_attachment_nodes") return await this.createAttachmentNodes(input as { attachmentIds: string[]; x?: number; y?: number; gap?: number; direction?: "row" | "column" });
         if (!this.clients.size) throw new Error("当前没有已连接画布");
@@ -500,7 +500,7 @@ export class CanvasSession {
                 missing.push(id);
                 return;
             }
-            found.push({ ...node, ...nodeRelations(nodes, state.connections || [], node.id) });
+            found.push({ ...slimNodeMetadata(node), ...nodeRelations(nodes, state.connections || [], node.id) });
         });
         return { nodes: found, missing };
     }

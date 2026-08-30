@@ -17,10 +17,10 @@ test("MCP 读取当前激活网页的画布", async (t) => {
     session.updateState(snapshot("canvas-second"), "second");
 
     session.activateClient("first");
-    assert.equal(field(await session.callTool("canvas_get_state", {}), "projectId"), "canvas-first");
+    assert.match(await session.callTool("canvas_get_state", {}), /canvas-first/);
 
     session.activateClient("second");
-    assert.equal(field(await session.callTool("canvas_get_state", {}), "projectId"), "canvas-second");
+    assert.match(await session.callTool("canvas_get_state", {}), /canvas-second/);
 });
 
 test("按精确 clientId 读取画布快照，不受当前焦点影响", (t) => {
@@ -159,7 +159,7 @@ test("活动网页关闭后回退到仍连接的画布", async (t) => {
     session.activateClient("second");
     second.close();
 
-    assert.equal(field(await session.callTool("canvas_get_state", {}), "projectId"), "canvas-first");
+    assert.match(await session.callTool("canvas_get_state", {}), /canvas-first/);
 });
 
 test("closing the active client falls back to the most recently focused client", async (t) => {
@@ -179,7 +179,7 @@ test("closing the active client falls back to the most recently focused client",
     session.activateClient("second");
     second.close();
 
-    assert.equal(field(await session.callTool("canvas_get_state", {}), "projectId"), "canvas-third");
+    assert.match(await session.callTool("canvas_get_state", {}), /canvas-third/);
 });
 
 test("closing a client rejects its pending tool requests", async () => {
@@ -345,7 +345,7 @@ test("a bound client remains the tool target while focus changes", async (t) => 
     session.bindClient("first");
     session.activateClient("second");
 
-    assert.equal(field(await session.callTool("canvas_get_state", {}), "projectId"), "canvas-first");
+    assert.match(await session.callTool("canvas_get_state", {}), /canvas-first/);
     const result = session.callTool("canvas_create_text_node", { text: "bound" });
     const call = first.event("tool_call");
     assert.equal(second.event("tool_call"), undefined);
@@ -353,7 +353,7 @@ test("a bound client remains the tool target while focus changes", async (t) => 
     assert.deepEqual(await result, { ok: true });
 
     session.releaseClient("first");
-    assert.equal(field(await session.callTool("canvas_get_state", {}), "projectId"), "canvas-second");
+    assert.match(await session.callTool("canvas_get_state", {}), /canvas-second/);
 });
 
 test("a disconnected bound client never falls back and can resume with the same client id", async (t) => {
@@ -376,7 +376,7 @@ test("a disconnected bound client never falls back and can resume with the same 
     const reconnected = connect(session, "first");
     t.after(() => reconnected.close());
     session.updateState(snapshot("canvas-first-reconnected"), "first");
-    assert.equal(field(await session.callTool("canvas_get_state", {}), "projectId"), "canvas-first-reconnected");
+    assert.match(await session.callTool("canvas_get_state", {}), /canvas-first-reconnected/);
 
     const result = session.callTool("canvas_create_text_node", { text: "reconnected" });
     const call = reconnected.event("tool_call");

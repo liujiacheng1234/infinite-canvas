@@ -2,6 +2,7 @@
 
 ## Unreleased
 
++ [优化] Canvas Agent 画布概览改用表头行文本返回（连线用节点行号引用、status 空值省略），`canvas_get_nodes` 剔除 storageKey/bytes/mimeType 并对重复的 prompt 去重，大幅降低大画布下的返回 token。
 + [新增] Canvas Agent 新增 `canvas_get_nodes` 和 `canvas_read_image` 工具：按 id 读取节点完整 metadata 和上下游邻居，按需读取一张图片内容；Agent 首次具备读全文和看图能力。
 + [新增] Canvas Agent 新增 `canvas_disconnect_nodes` 工具，按 from/to 断开节点连线。
 + [调整] 画布写入工具统一返回执行回执（每个 op 的成功/失败/原因、新建节点 id、被断开的连线），不再返回全量快照，避免大画布下上下文爆炸，也让 Agent 能立即发现失败的操作。

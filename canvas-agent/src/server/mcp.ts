@@ -23,8 +23,9 @@ function registerCanvasTool(server: McpServer, config: CanvasAgentConfig, name: 
     });
 }
 
-/** 结果携带 image 字段时输出 MCP 图像内容，便于多模态客户端直接看图；其余字段仍以 JSON 返回。 */
+/** 结果为字符串时直传（如 get_state 的表头行文本）；携带 image 字段时输出 MCP 图像内容，便于多模态客户端直接看图；其余字段仍以 JSON 返回。 */
 function toToolContent(result: unknown) {
+    if (typeof result === "string") return { content: [{ type: "text" as const, text: result }] };
     const record = result && typeof result === "object" ? (result as Record<string, unknown>) : {};
     const image = record.image as { data?: unknown; mimeType?: unknown } | undefined;
     if (typeof image?.data !== "string") return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
