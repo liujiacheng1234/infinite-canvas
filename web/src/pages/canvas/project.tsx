@@ -612,7 +612,10 @@ function InfiniteCanvasPage() {
 
     const singleSelectedNodeId = selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null;
     // Granular per-id lookups: each subscription rerenders only when that specific node changes.
-    const toolbarNode = useWorldNode(toolbarNodeId) || useWorldNode(singleSelectedNodeId);
+    // Both hooks must run unconditionally (no || short-circuit between hook calls).
+    const toolbarIdNode = useWorldNode(toolbarNodeId);
+    const singleSelectedNode = useWorldNode(singleSelectedNodeId);
+    const toolbarNode = toolbarIdNode || singleSelectedNode;
     const infoNode = useWorldNode(infoNodeId);
     const cropNode = useWorldNode(cropNodeId);
     const maskEditNode = useWorldNode(maskEditNodeId);
