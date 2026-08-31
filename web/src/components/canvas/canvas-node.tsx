@@ -15,10 +15,13 @@ import { useTranslation } from "react-i18next";
 
 type ResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 const selectionBlue = "#2f80ff";
+// Stable empty reference array prevents invalidating downstream memoization on every render.
+const EMPTY_REFERENCES: CanvasResourceReference[] = [];
 
 type CanvasNodeProps = {
     data: CanvasNodeData;
-    scale: number;
+    /** Stable scale getter; nodes do not rerender on zoom, resize reads the live value from the ref. */
+    getScale: () => number;
     isSelected: boolean;
     isRelated: boolean;
     isFocusRelated: boolean;
@@ -27,7 +30,9 @@ type CanvasNodeProps = {
     referenceSelectionState?: "target" | "disabled" | "available";
     showPanel: boolean;
     showImageInfo: boolean;
-    mentionReferences?: CanvasResourceReference[];
+    getMentionReferences?: (node: CanvasNodeData) => CanvasResourceReference[];
+    /** Changing value passed only to the node with an open panel so its panel re-reads fresh data; ignored otherwise. */
+    panelRefresh?: unknown;
     pluginHost?: CanvasPluginHost;
     registryVersion?: number;
     renderPanel?: (node: CanvasNodeData) => ReactNode;
@@ -83,7 +88,7 @@ type NodeContentRendererProps = {
 
 export const CanvasNode = React.memo(function CanvasNode({
     data,
-    scale,
+    getScale,
     isSelected,
     isRelated,
     isFocusRelated,
@@ -92,7 +97,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     referenceSelectionState,
     showPanel,
     showImageInfo,
-    mentionReferences = [],
+    getMentionReferences,
     pluginHost,
     renderPanel,
     renderNodeContent,
@@ -124,7 +129,7 @@ export const CanvasNode = React.memo(function CanvasNode({
     const { t } = useTranslation();
     const [hovered, setHovered] = useState(false);
     const definition = getNodeDefinition(data.type);
-    const pluginContext = useMemo<CanvasNodeContext | null>(() => (pluginHost ? buildNodeContext(pluginHost, data, theme, scale, isSelected) : null), [pluginHost, data, theme, scale, isSelected]);
+    const pluginContext = useMemo<CanvasNodeContext | null>(() => (pluginHost ? buildNodeContext(pluginHost, data, theme, getScale(), isSelected) : null), [pluginHost, data, theme, getScale, isSelected]);
     const [isEditingContent, setIsEditingContent] = useState(false);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [titleDraft, setTitleDraft] = useState(data.title || "");
@@ -132,6 +137,9 @@ export const CanvasNode = React.memo(function CanvasNode({
     const hasVideoContent = data.type === CanvasNodeType.Video && Boolean(data.metadata?.content);
     const hasAudioContent = data.type === CanvasNodeType.Audio && Boolean(data.metadata?.content);
     const isGroup = data.type === CanvasNodeType.Group;
+    // Mention references are only needed while editing text inline; resolve lazily via the stable getter
+    // so the canvas does not build O(n^2) reference lists on every nodes change.
+    const mentionReferences = useMemo(() => (isEditingContent ? getMentionReferences?.(data) || EMPTY_REFERENCES : EMPTY_REFERENCES), [data, getMentionReferences, isEditingContent]);
     const batchCount = data.type === CanvasNodeType.Image ? data.metadata?.images?.length || 0 : data.type === CanvasNodeType.Text ? data.metadata?.texts?.length || 0 : 0;
     const isBatchRoot = batchCount > 1;
     // Nodes with the interaction/move toggle ignore content pointer events in move mode and allow interaction in interactive mode.
@@ -221,6 +229,7 @@ export const CanvasNode = React.memo(function CanvasNode({
         (event: MouseEvent) => {
             if (!resizeRef.current.isResizing) return;
 
+            const scale = getScale();
             const dx = (event.clientX - resizeRef.current.startX) / scale;
             const dy = (event.clientY - resizeRef.current.startY) / scale;
             const minWidth = 220;
@@ -255,7 +264,7 @@ export const CanvasNode = React.memo(function CanvasNode({
                 y: fromTop ? startBottom - height : resizeRef.current.startTop,
             });
         },
-        [data.id, onResize, scale],
+        [data.id, getScale, onResize],
     );
 
     const handleResizeUp = useCallback(() => {

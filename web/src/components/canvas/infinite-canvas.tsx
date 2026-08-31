@@ -31,6 +31,8 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
     });
     const scaleRef = useRef(viewport.k);
     const frameRef = useRef<number | null>(null);
+    const zoomFrameRef = useRef<number | null>(null);
+    const pendingZoomRef = useRef<ViewportTransform | null>(null);
     const nextViewportRef = useRef<ViewportTransform | null>(null);
     const [isSpacePressed, setIsSpacePressed] = useState(false);
     const [isControlPressed, setIsControlPressed] = useState(false);
@@ -43,6 +45,7 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
     useEffect(
         () => () => {
             if (frameRef.current) cancelAnimationFrame(frameRef.current);
+            if (zoomFrameRef.current) cancelAnimationFrame(zoomFrameRef.current);
         },
         [],
     );
@@ -88,21 +91,29 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest("[data-canvas-no-zoom],.ant-modal,.ant-popover,.ant-dropdown,.ant-select-dropdown,.ant-picker-dropdown")) return;
 
-        const delta = -event.deltaY;
-        const factor = Math.pow(1.1, delta / 100);
-        const newScale = Math.min(Math.max(viewport.k * factor, 0.05), 5);
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return;
 
+        // Coalesce wheel events into one viewport update per frame, like panning, so zooming stays smooth.
+        const base = pendingZoomRef.current || viewport;
+        const delta = -event.deltaY;
+        const factor = Math.pow(1.1, delta / 100);
+        const newScale = Math.min(Math.max(base.k * factor, 0.05), 5);
         const mouseX = event.clientX - rect.left;
         const mouseY = event.clientY - rect.top;
-        const worldX = (mouseX - viewport.x) / viewport.k;
-        const worldY = (mouseY - viewport.y) / viewport.k;
+        const worldX = (mouseX - base.x) / base.k;
+        const worldY = (mouseY - base.y) / base.k;
 
-        onViewportChange({
+        pendingZoomRef.current = {
             x: mouseX - worldX * newScale,
             y: mouseY - worldY * newScale,
             k: newScale,
+        };
+        if (zoomFrameRef.current) return;
+        zoomFrameRef.current = requestAnimationFrame(() => {
+            zoomFrameRef.current = null;
+            if (pendingZoomRef.current) onViewportChange(pendingZoomRef.current);
+            pendingZoomRef.current = null;
         });
     };
 
@@ -224,6 +235,8 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
                 className="absolute origin-top-left"
                 style={{
                     transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.k})`,
+                    // Promote to its own compositing layer so pan/zoom is GPU-composited instead of repainting every node.
+                    willChange: "transform",
                 }}
             >
                 {children}

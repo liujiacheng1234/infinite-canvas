@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
@@ -11,9 +11,11 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
     const [isDragging, setIsDragging] = useState(false);
     const width = 240;
     const height = 160;
+    // Lag node rects behind urgent canvas updates (drag/zoom frames) so the minimap does not rerender per frame.
+    const deferredNodes = useDeferredValue(nodes);
 
     const { worldBounds, scale, offset } = useMemo(() => {
-        if (!nodes.length) {
+        if (!deferredNodes.length) {
             return { worldBounds: { x: -500, y: -500, w: 1000, h: 1000 }, scale: 0.16, offset: { x: 40, y: 0 } };
         }
 
@@ -22,7 +24,7 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
         let maxX = -Infinity;
         let maxY = -Infinity;
 
-        nodes.forEach((node) => {
+        deferredNodes.forEach((node) => {
             minX = Math.min(minX, node.position.x);
             minY = Math.min(minY, node.position.y);
             maxX = Math.max(maxX, node.position.x + node.width);
@@ -45,7 +47,7 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
             scale: nextScale,
             offset: { x: (width - mapContentW) / 2, y: (height - mapContentH) / 2 },
         };
-    }, [nodes]);
+    }, [deferredNodes]);
 
     const toMinimap = useCallback(
         (worldX: number, worldY: number) => {
@@ -112,26 +114,35 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
                 onPointerUp={() => setIsDragging(false)}
                 onPointerLeave={() => setIsDragging(false)}
             >
-                {nodes.map((node) => {
-                    const pos = toMinimap(node.position.x, node.position.y);
-                    const color = getNodeDefinition(node.type)?.minimapColor || theme.node.muted;
-                    return (
-                        <div
-                            key={node.id}
-                            className="absolute rounded-[1px]"
-                            style={{
-                                left: pos.x,
-                                top: pos.y,
-                                width: Math.max(node.width * scale, 2),
-                                height: Math.max(node.height * scale, 2),
-                                backgroundColor: color,
-                                opacity: 0.8,
-                            }}
-                        />
-                    );
-                })}
+                <MinimapNodes nodes={deferredNodes} toMinimap={toMinimap} scale={scale} mutedColor={theme.node.muted} />
                 <div className="pointer-events-none absolute border" style={{ left: viewportRect.x, top: viewportRect.y, width: viewportRect.w, height: viewportRect.h, borderColor: theme.node.activeStroke, background: `${theme.node.activeStroke}18` }} />
             </div>
         </div>
     );
 }
+
+// Memoized rect list; paired with the deferred nodes above it stays static while nodes churn every drag frame.
+const MinimapNodes = memo(function MinimapNodes({ nodes, toMinimap, scale, mutedColor }: { nodes: CanvasNodeData[]; toMinimap: (worldX: number, worldY: number) => { x: number; y: number }; scale: number; mutedColor: string }) {
+    return (
+        <>
+            {nodes.map((node) => {
+                const pos = toMinimap(node.position.x, node.position.y);
+                const color = getNodeDefinition(node.type)?.minimapColor || mutedColor;
+                return (
+                    <div
+                        key={node.id}
+                        className="absolute rounded-[1px]"
+                        style={{
+                            left: pos.x,
+                            top: pos.y,
+                            width: Math.max(node.width * scale, 2),
+                            height: Math.max(node.height * scale, 2),
+                            backgroundColor: color,
+                            opacity: 0.8,
+                        }}
+                    />
+                );
+            })}
+        </>
+    );
+});
