@@ -459,7 +459,9 @@ export class CanvasSession {
         const input = parseToolInput(name, rawInput) as Record<string, unknown>;
         if (SITE_TOOLS.has(name)) {
             if (!this.clients.size) throw new Error("当前没有已连接网页");
-            return await this.requestCanvasTool(name, input);
+            // generation_get_status 的 nodeIds 与画布工具入参同样接受节点短引用，转发前先解析为真实 id。
+            const resolved = name === "generation_get_status" ? (resolveToolNodeRefs(this.refsFor(this.targetClientId), input) as Record<string, unknown>) : input;
+            return await this.requestCanvasTool(name, resolved);
         }
         const state = this.canvasState;
         const readTool = ["canvas_get_state", "canvas_get_selection", "canvas_get_nodes"].includes(name);

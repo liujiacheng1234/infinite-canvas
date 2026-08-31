@@ -147,6 +147,24 @@ test("生成状态查询由当前激活网页返回", async (t) => {
     assert.deepEqual(await result, { total: 1, tasks: [{ id: "image-1", status: "running" }] });
 });
 
+test("generation_get_status 的 nodeIds 支持节点短引用", async (t) => {
+    const session = new CanvasSession();
+    const page = connect(session, "first");
+    t.after(() => page.close());
+    session.updateState(
+        { ...snapshot("canvas-first"), nodes: [{ id: "image-real-1", type: "image", title: "home", position: { x: 0, y: 0 }, width: 100, height: 100 }] },
+        "first",
+    );
+    session.activateClient("first");
+
+    const result = session.callTool("generation_get_status", { nodeIds: ["n1"] });
+    const call = page.event("tool_call");
+    assert.equal(field(call, "name"), "generation_get_status");
+    assert.deepEqual(field(field(call, "input"), "nodeIds"), ["image-real-1"]);
+    session.resolveResult("first", { requestId: String(field(call, "requestId")), result: { total: 0, tasks: [] } });
+    assert.deepEqual(await result, { total: 0, tasks: [] });
+});
+
 test("活动网页关闭后回退到仍连接的画布", async (t) => {
     const session = new CanvasSession();
     const first = connect(session, "first");
