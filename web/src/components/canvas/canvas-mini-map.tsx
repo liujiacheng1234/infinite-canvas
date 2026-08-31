@@ -2,11 +2,15 @@ import { memo, useCallback, useDeferredValue, useMemo, useRef, useState } from "
 
 import { canvasThemes } from "@/lib/canvas-theme";
 import { getNodeDefinition } from "@/lib/canvas/node-registry";
+import { useCanvasWorldStore } from "@/stores/canvas/use-canvas-world-store";
 import { useThemeStore } from "@/stores/use-theme-store";
-import { type CanvasNodeData, type ViewportTransform } from "@/types/canvas";
+import { type CanvasNodeData } from "@/types/canvas";
 
-export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { nodes: CanvasNodeData[]; viewport: ViewportTransform; viewportSize: { width: number; height: number }; onViewportChange: (viewport: ViewportTransform) => void }) {
+export function Minimap({ viewportSize }: { viewportSize: { width: number; height: number } }) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const nodes = useCanvasWorldStore((state) => state.nodes);
+    const viewport = useCanvasWorldStore((state) => state.viewport);
+    const setViewport = useCanvasWorldStore((state) => state.setViewport);
     const containerRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState(false);
     const width = 240;
@@ -90,7 +94,7 @@ export function Minimap({ nodes, viewport, viewportSize, onViewportChange }: { n
         if (!rect) return;
 
         const world = toWorld(event.clientX - rect.left, event.clientY - rect.top);
-        onViewportChange({
+        setViewport({
             x: viewportSize.width / 2 - world.x * viewport.k,
             y: viewportSize.height / 2 - world.y * viewport.k,
             k: viewport.k,

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 
 import i18n from "@/i18n";
 import { useAgentStore } from "@/stores/use-agent-store";
+import { useCanvasWorldStore } from "@/stores/canvas/use-canvas-world-store";
 import { applyCanvasAgentOps, type CanvasAgentApplyReceipt, type CanvasAgentOp, type CanvasAgentSnapshot } from "@/lib/canvas/canvas-agent-ops";
 import type { CanvasNodeGenerationMode } from "@/components/canvas/canvas-node-prompt-panel";
 import type { CanvasConnection, CanvasNodeData, ContextMenuState, ViewportTransform } from "@/types/canvas";
@@ -11,10 +12,6 @@ type GenerateNodeRef = MutableRefObject<((nodeId: string, mode: CanvasNodeGenera
 type AgentBridgeParams = {
     projectId: string;
     title: string | undefined;
-    nodes: CanvasNodeData[];
-    connections: CanvasConnection[];
-    selectedNodeIds: Set<string>;
-    viewport: ViewportTransform;
     nodesRef: MutableRefObject<CanvasNodeData[]>;
     connectionsRef: MutableRefObject<CanvasConnection[]>;
     selectedNodeIdsRef: MutableRefObject<Set<string>>;
@@ -31,15 +28,19 @@ type AgentBridgeParams = {
 /**
  * Bridge between the canvas and local Agent: publish the current snapshot and apply/undo capabilities
  * to the Agent store for the local Codex panel. All members except applyAgentOps are internal.
+ * The snapshot is read from the world store and pushed debounced, so interaction frames do not
+ * hammer the Agent store with per-frame updates.
  */
 export function useAgentBridge(params: AgentBridgeParams) {
-    const { projectId, title, nodes, connections, selectedNodeIds, viewport, nodesRef, connectionsRef, selectedNodeIdsRef, viewportRef, generateNodeRef, setNodes, setConnections, setSelectedNodeIds, setSelectedConnectionId, setViewport, setContextMenu } =
-        params;
+    const { projectId, title, nodesRef, connectionsRef, selectedNodeIdsRef, viewportRef, generateNodeRef, setNodes, setConnections, setSelectedNodeIds, setSelectedConnectionId, setViewport, setContextMenu } = params;
     const setAgentCanvasContext = useAgentStore((state) => state.setCanvasContext);
     const [agentUndoSnapshot, setAgentUndoSnapshot] = useState<CanvasAgentSnapshot | null>(null);
     const projectTitle = title || i18n.t("canvas.project.untitled");
 
-    const agentSnapshot = useMemo<CanvasAgentSnapshot>(() => ({ projectId, title: projectTitle, nodes, connections, selectedNodeIds: Array.from(selectedNodeIds), viewport }), [connections, projectTitle, nodes, projectId, selectedNodeIds, viewport]);
+    const buildSnapshot = useCallback((): CanvasAgentSnapshot => {
+        const world = useCanvasWorldStore.getState();
+        return { projectId, title: projectTitle, nodes: world.nodes, connections: world.connections, selectedNodeIds: Array.from(world.selectedNodeIds), viewport: world.viewport };
+    }, [projectId, projectTitle]);
     const runAgentOps = useCallback(
         (ops?: CanvasAgentOp[]): { snapshot: CanvasAgentSnapshot; receipt: CanvasAgentApplyReceipt } => {
             const safeOps = Array.isArray(ops) ? ops.filter((op) => op?.type) : [];
@@ -94,9 +95,26 @@ export function useAgentBridge(params: AgentBridgeParams) {
     }, [agentUndoSnapshot, projectTitle, projectId]);
 
     useEffect(() => {
-        setAgentCanvasContext({ snapshot: agentSnapshot, applyOps: applyAgentOps, applyOpsWithReceipt: runAgentOps, undoOps: undoAgentOps, canUndo: Boolean(agentUndoSnapshot) });
-        return () => setAgentCanvasContext(null);
-    }, [agentSnapshot, applyAgentOps, runAgentOps, agentUndoSnapshot, setAgentCanvasContext, undoAgentOps]);
+        const push = () => {
+            setAgentCanvasContext({ snapshot: buildSnapshot(), applyOps: applyAgentOps, applyOpsWithReceipt: runAgentOps, undoOps: undoAgentOps, canUndo: Boolean(agentUndoSnapshot) });
+        };
+        push();
+        // Debounce snapshot pushes: dragging/zooming updates the world store every frame, but the Agent
+        // only needs a recent snapshot, never a per-frame one.
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const unsub = useCanvasWorldStore.subscribe(() => {
+            if (timer) return;
+            timer = setTimeout(() => {
+                timer = null;
+                push();
+            }, 250);
+        });
+        return () => {
+            unsub();
+            if (timer) clearTimeout(timer);
+            setAgentCanvasContext(null);
+        };
+    }, [agentUndoSnapshot, applyAgentOps, buildSnapshot, runAgentOps, setAgentCanvasContext, undoAgentOps]);
 
     return { applyAgentOps };
 }

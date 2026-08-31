@@ -57,9 +57,18 @@
 - 节点层容器加 `will-change: transform`，平移/缩放走 GPU 合成，不再逐帧重绘整个画布层。
 - 小地图节点矩形拆为 memo 组件 + `useDeferredValue`，拖拽期间静止、结束后同步。
 
-### 第三梯队（架构级，暂不动）
+### 第三梯队（已完成：分片订阅架构）
 
-7. 节点数据迁移到 zustand 分片订阅（每节点只订阅自身数据），视口变换直接写 style，即 React Flow 的模型。效果好但改动大。
+已将节点/连线/选区/视口迁移到独立的 zustand world store（`use-canvas-world-store.ts`），页面退出高频渲染路径：
+
+1. **world store**：`nodes/connections/selectedNodeIds/selectedConnectionId/viewport` + 派生 `byId`；action 签名与原 setState 完全兼容，`project.tsx` 约 60 处 `setNodes(...)` 调用点零改动。
+2. **页面本体不再订阅高频切片**：refs 由 store subscription 同步；对话框/工具栏的节点查找改用 `useWorldNode(id)` 粒度订阅（仅该节点变化时重渲染）；仅保留选区等慢变订阅。
+3. **渲染树抽成 `CanvasWorld` 订阅组件**：连线 SVG、可见节点裁剪、关联高亮、选区框、panelRefresh 全部内聚；拖拽/缩放帧只重渲染此子树。
+4. **InfiniteCanvas/小地图/缩放控件/悬停工具栏/左侧面板改为自行订阅所需切片**；左侧面板保留 `useDeferredValue` + memo。
+5. **Agent 桥接**：快照改从 store 读取并以 250ms 防抖推送到 Agent store，不再每帧推送；写入/撤销仍走 refs 同步。
+6. 历史/自动保存改为 store subscription 驱动，逻辑（防抖、暂停守卫、500ms 视口持久化）与原先一致。
+
+预期效果：拖拽帧 = CanvasWorld 子树 + 被拖节点；缩放/平移帧 = InfiniteCanvas + 网格 + 小地图/控件外壳；页面 body（3200 行、全部对话框与面板）在交互帧完全休眠。
 
 ## 验证方式
 

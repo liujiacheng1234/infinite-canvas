@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Group, Video } from "lucide-react";
@@ -41,10 +41,12 @@ import { AssetPickerModal, type InsertAssetPayload } from "@/components/canvas/a
 import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { useAgentStore } from "@/stores/use-agent-store";
+import { useCanvasWorldStore, type CanvasWorldState } from "@/stores/canvas/use-canvas-world-store";
 import { useCanvasStore } from "@/stores/canvas/use-canvas-store";
 import { useAgentBridge } from "@/pages/canvas/hooks/use-agent-bridge";
 import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
-import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode } from "@/lib/canvas/canvas-resource-references";
+import type { CanvasPluginHost } from "@/types/canvas-plugin";
+import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
 import { applyNodeConfigPatch, audioMetadata, buildAudioGenerationMetadata, buildImageGenerationMetadata, createCanvasNode, imageMetadata, videoMetadata } from "@/lib/canvas/canvas-node-factory";
 import { findContainingGroupId, findGroupDropTarget, getConnectionTargetAnchor, normalizeConnection, snapNodesIntoGroup } from "@/lib/canvas/canvas-node-geometry";
@@ -163,7 +165,6 @@ function InfiniteCanvasPage() {
     const historyRef = useRef<{ past: CanvasHistoryEntry[]; future: CanvasHistoryEntry[] }>({ past: [], future: [] });
     const lastHistoryRef = useRef<CanvasHistoryEntry | null>(null);
     const historyCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const viewportSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const applyingHistoryRef = useRef(false);
     const historyPausedRef = useRef(false);
     const didInitialCenterRef = useRef(false);
@@ -197,15 +198,19 @@ function InfiniteCanvasPage() {
     const deleteProjects = useCanvasStore((state) => state.deleteProjects);
     const currentProject = useCanvasStore((state) => state.projects.find((project) => project.id === projectId));
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
-    const [nodes, setNodes] = useState<CanvasNodeData[]>([]);
-    const [connections, setConnections] = useState<CanvasConnection[]>([]);
+    // High-frequency canvas state lives in the world store; the page only subscribes to slow-changing slices
+    // (selection) and granular node lookups, so drag/zoom frames never rerender the page body.
+    const setNodes = useCanvasWorldStore((state) => state.setNodes);
+    const setConnections = useCanvasWorldStore((state) => state.setConnections);
+    const setSelectedNodeIds = useCanvasWorldStore((state) => state.setSelectedNodeIds);
+    const setSelectedConnectionId = useCanvasWorldStore((state) => state.setSelectedConnectionId);
+    const setViewport = useCanvasWorldStore((state) => state.setViewport);
+    const selectedNodeIds = useCanvasWorldStore((state) => state.selectedNodeIds);
+    const selectedConnectionId = useCanvasWorldStore((state) => state.selectedConnectionId);
     const [chatSessions, setChatSessions] = useState<CanvasAssistantSession[]>([]);
     const [activeChatId, setActiveChatId] = useState<string | null>(null);
-    const [viewport, setViewport] = useState<ViewportTransform>({ x: 0, y: 0, k: 1 });
     const [canvasTool, setCanvasTool] = useState<"select" | "pan">("pan");
     const [size, setSize] = useState({ width: 1200, height: 720 });
-    const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
-    const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
     const [connectingParams, setConnectingParams] = useState<ConnectionHandle | null>(null);
     const [connectionTargetNodeId, setConnectionTargetNodeId] = useState<string | null>(null);
@@ -243,11 +248,15 @@ function InfiniteCanvasPage() {
     const [dropTargetGroupId, setDropTargetGroupId] = useState<string | null>(null);
     const [referencePickerNodeId, setReferencePickerNodeId] = useState<string | null>(null);
 
-    const nodesRef = useRef(nodes);
-    const connectionsRef = useRef(connections);
-    const selectedNodeIdsRef = useRef(selectedNodeIds);
-    const viewportRef = useRef(viewport);
+    const nodesRef = useRef<CanvasNodeData[]>([]);
+    const connectionsRef = useRef<CanvasConnection[]>([]);
+    const selectedNodeIdsRef = useRef<Set<string>>(new Set());
+    const viewportRef = useRef<ViewportTransform>({ x: 0, y: 0, k: 1 });
     const runningNodeIdRef = useRef(runningNodeId);
+    const chatSessionsRef = useRef(chatSessions);
+    const activeChatIdRef = useRef(activeChatId);
+    const backgroundModeRef = useRef(backgroundMode);
+    const showImageInfoRef = useRef(showImageInfo);
     const focusAnimRef = useRef<number | null>(null);
     const generateNodeRef = useRef<((nodeId: string, mode: CanvasNodeGenerationMode, prompt: string) => Promise<void>) | null>(null);
     const connectingParamsRef = useRef(connectingParams);
@@ -255,18 +264,6 @@ function InfiniteCanvasPage() {
     const selectionBoxRef = useRef(selectionBox);
     const pendingConnectionCreateRef = useRef(pendingConnectionCreate);
     const generationRequestsRef = useRef(new Map<string, CanvasGenerationRequest>());
-
-    const createHistoryEntry = useCallback(
-        (): CanvasHistoryEntry => ({
-            nodes: nodesRef.current,
-            connections: connectionsRef.current,
-            chatSessions,
-            activeChatId,
-            backgroundMode,
-            showImageInfo,
-        }),
-        [activeChatId, backgroundMode, chatSessions, showImageInfo],
-    );
 
     const cleanupCanvasFiles = useCallback(
         (extra?: unknown) => {
@@ -373,44 +370,78 @@ function InfiniteCanvasPage() {
         if (!searchParams.has("agentUrl") && !localAgentEnabled && !fragmentBootstrap) openAgentPanel();
     }, [fragmentBootstrap, localAgentEnabled, openAgentPanel, projectLoaded, searchParams]);
 
-    useEffect(() => {
-        if (!projectLoaded || applyingHistoryRef.current || historyPausedRef.current) return;
-        const next = createHistoryEntry();
+    const queueHistoryCommit = useCallback(() => {
+        if (applyingHistoryRef.current || historyPausedRef.current) return;
+        const buildEntry = (): CanvasHistoryEntry => ({
+            nodes: useCanvasWorldStore.getState().nodes,
+            connections: useCanvasWorldStore.getState().connections,
+            chatSessions: chatSessionsRef.current,
+            activeChatId: activeChatIdRef.current,
+            backgroundMode: backgroundModeRef.current,
+            showImageInfo: showImageInfoRef.current,
+        });
+        const next = buildEntry();
         const previous = lastHistoryRef.current;
         if (
-            previous?.nodes === next.nodes &&
-            previous.connections === next.connections &&
-            previous.chatSessions === next.chatSessions &&
-            previous.activeChatId === next.activeChatId &&
-            previous.backgroundMode === next.backgroundMode &&
-            previous.showImageInfo === next.showImageInfo
+            !previous ||
+            (previous.nodes === next.nodes &&
+                previous.connections === next.connections &&
+                previous.chatSessions === next.chatSessions &&
+                previous.activeChatId === next.activeChatId &&
+                previous.backgroundMode === next.backgroundMode &&
+                previous.showImageInfo === next.showImageInfo)
         )
             return;
 
         if (historyCommitTimerRef.current) clearTimeout(historyCommitTimerRef.current);
         historyCommitTimerRef.current = setTimeout(() => {
-            const current = createHistoryEntry();
             const last = lastHistoryRef.current;
             if (!last) return;
             historyRef.current.past = [...historyRef.current.past.slice(-49), last];
             historyRef.current.future = [];
             setHistoryState({ canUndo: true, canRedo: false });
-            lastHistoryRef.current = current;
+            lastHistoryRef.current = buildEntry();
             historyCommitTimerRef.current = null;
         }, 180);
+    }, []);
 
-        return () => {
-            if (historyCommitTimerRef.current) {
-                clearTimeout(historyCommitTimerRef.current);
-                historyCommitTimerRef.current = null;
-            }
+    // Mirror world-store state into refs so handlers always read fresh data, and drive history/autosave
+    // from store subscriptions so interaction frames never rerender the page.
+    useEffect(() => {
+        const sync = (state: CanvasWorldState) => {
+            nodesRef.current = state.nodes;
+            connectionsRef.current = state.connections;
+            selectedNodeIdsRef.current = state.selectedNodeIds;
+            viewportRef.current = state.viewport;
+            queueHistoryCommit();
         };
-    }, [activeChatId, backgroundMode, chatSessions, connections, createHistoryEntry, nodes, projectLoaded, showImageInfo]);
+        sync(useCanvasWorldStore.getState());
+        return useCanvasWorldStore.subscribe(sync);
+    }, [queueHistoryCommit]);
 
     useEffect(() => {
-        if (!projectLoaded || historyPausedRef.current) return;
-        updateProject(projectId, { nodes, connections, chatSessions, activeChatId, backgroundMode, showImageInfo });
-    }, [activeChatId, backgroundMode, chatSessions, connections, nodes, projectId, projectLoaded, showImageInfo, updateProject]);
+        if (!projectLoaded) return;
+        queueHistoryCommit();
+    }, [activeChatId, backgroundMode, chatSessions, projectLoaded, queueHistoryCommit, showImageInfo]);
+
+    useEffect(() => {
+        if (!projectLoaded) return;
+        let prevNodes: CanvasNodeData[] | null = null;
+        let prevConnections: CanvasConnection[] | null = null;
+        return useCanvasWorldStore.subscribe((state) => {
+            if (historyPausedRef.current) return;
+            if (prevNodes === state.nodes && prevConnections === state.connections) return;
+            prevNodes = state.nodes;
+            prevConnections = state.connections;
+            updateProject(projectId, { nodes: state.nodes, connections: state.connections, chatSessions: chatSessionsRef.current, activeChatId: activeChatIdRef.current, backgroundMode: backgroundModeRef.current, showImageInfo: showImageInfoRef.current });
+        });
+    }, [projectId, projectLoaded, updateProject]);
+
+    useEffect(() => {
+        if (!projectLoaded) return;
+        const world = useCanvasWorldStore.getState();
+        updateProject(projectId, { nodes: world.nodes, connections: world.connections, chatSessions, activeChatId, backgroundMode, showImageInfo });
+    }, [activeChatId, backgroundMode, chatSessions, projectId, projectLoaded, showImageInfo, updateProject]);
 
     useEffect(() => {
         if (!dialogNodeId) setNodeImageSettingsOpen(false);
@@ -418,27 +449,31 @@ function InfiniteCanvasPage() {
 
     useEffect(() => {
         if (!projectLoaded) return;
-        if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
-        viewportSaveTimerRef.current = setTimeout(() => {
-            updateProject(projectId, { viewport: viewportRef.current });
-            viewportSaveTimerRef.current = null;
-        }, 500);
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        const unsub = useCanvasWorldStore.subscribe(() => {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => {
+                timer = null;
+                updateProject(projectId, { viewport: useCanvasWorldStore.getState().viewport });
+            }, 500);
+        });
         return () => {
-            if (viewportSaveTimerRef.current) clearTimeout(viewportSaveTimerRef.current);
+            unsub();
+            if (timer) clearTimeout(timer);
         };
-    }, [projectId, projectLoaded, updateProject, viewport]);
+    }, [projectId, projectLoaded, updateProject]);
 
-    // Keep latest state in refs during render (not in a layout effect) so callbacks and panel renderers
-    // always read fresh data; render-phase reads otherwise see the previous commit's values.
-    nodesRef.current = nodes;
-    connectionsRef.current = connections;
-    selectedNodeIdsRef.current = selectedNodeIds;
-    viewportRef.current = viewport;
+    // Keep latest page state in refs during render so callbacks always read fresh data.
+    // World state (nodes/connections/selection/viewport) is mirrored by the subscription above.
+    chatSessionsRef.current = chatSessions;
+    activeChatIdRef.current = activeChatId;
+    backgroundModeRef.current = backgroundMode;
+    showImageInfoRef.current = showImageInfo;
+    runningNodeIdRef.current = runningNodeId;
     connectingParamsRef.current = connectingParams;
     connectionTargetNodeIdRef.current = connectionTargetNodeId;
     pendingConnectionCreateRef.current = pendingConnectionCreate;
     selectionBoxRef.current = selectionBox;
-    runningNodeIdRef.current = runningNodeId;
 
     useEffect(() => {
         const el = containerRef.current;
@@ -575,64 +610,21 @@ function InfiniteCanvasPage() {
         [screenToCanvas],
     );
 
-    const visibleNodes = useMemo(() => {
-        const padding = 280;
-        const rect = containerRef.current?.getBoundingClientRect();
-        const width = rect?.width || size.width;
-        const height = rect?.height || size.height;
-        const viewLeft = -viewport.x / viewport.k - padding;
-        const viewTop = -viewport.y / viewport.k - padding;
-        const viewRight = viewLeft + width / viewport.k + padding * 2;
-        const viewBottom = viewTop + height / viewport.k + padding * 2;
-
-        return nodes.filter((node) => node.position.x + node.width > viewLeft && node.position.x < viewRight && node.position.y + node.height > viewTop && node.position.y < viewBottom);
-    }, [nodes, size.height, size.width, viewport.k, viewport.x, viewport.y]);
-
-    const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
-    // The toolbar follows a single selected node selected by click, creation, marquee, or keyboard.
-    // It stays hidden for multi-selection and while isNodeDragging is true.
     const singleSelectedNodeId = selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null;
-    const toolbarNode = (toolbarNodeId ? nodeById.get(toolbarNodeId) || null : null) || (singleSelectedNodeId ? nodeById.get(singleSelectedNodeId) || null : null);
-    const infoNode = infoNodeId ? nodeById.get(infoNodeId) || null : null;
-    const cropNode = cropNodeId ? nodeById.get(cropNodeId) || null : null;
-    const maskEditNode = maskEditNodeId ? nodeById.get(maskEditNodeId) || null : null;
-    const splitNode = splitNodeId ? nodeById.get(splitNodeId) || null : null;
-    const upscaleNode = upscaleNodeId ? nodeById.get(upscaleNodeId) || null : null;
-    const superResolveNode = superResolveNodeId ? nodeById.get(superResolveNodeId) || null : null;
-    const angleNode = angleNodeId ? nodeById.get(angleNodeId) || null : null;
-    const contextMenuNode = contextMenu?.type === "node" ? nodeById.get(contextMenu.nodeId) || null : null;
-    const previewNode = previewNodeId ? nodeById.get(previewNodeId) || null : null;
+    // Granular per-id lookups: each subscription rerenders only when that specific node changes.
+    const toolbarNode = useWorldNode(toolbarNodeId) || useWorldNode(singleSelectedNodeId);
+    const infoNode = useWorldNode(infoNodeId);
+    const cropNode = useWorldNode(cropNodeId);
+    const maskEditNode = useWorldNode(maskEditNodeId);
+    const splitNode = useWorldNode(splitNodeId);
+    const upscaleNode = useWorldNode(upscaleNodeId);
+    const superResolveNode = useWorldNode(superResolveNodeId);
+    const angleNode = useWorldNode(angleNodeId);
+    const contextMenuNode = useWorldNode(contextMenu?.type === "node" ? contextMenu.nodeId : null);
+    const previewNode = useWorldNode(previewNodeId);
     const previewContent = previewImageId ? previewNode?.metadata?.images?.find((image) => image.id === previewImageId)?.content : previewNode?.metadata?.content;
     const hasMultipleSelectedNodes = selectedNodeIds.size > 1;
     const activeNodeId = hasMultipleSelectedNodes ? null : hoveredNodeId || (selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : null);
-    const groupChildCountById = useMemo(() => {
-        const map = new Map<string, number>();
-        nodes.forEach((node) => {
-            const groupId = node.metadata?.groupId;
-            if (groupId) map.set(groupId, (map.get(groupId) || 0) + 1);
-        });
-        return map;
-    }, [nodes]);
-    const relatedHighlight = useMemo(() => {
-        const nodeIds = new Set<string>();
-        const connectionIds = new Set<string>();
-
-        if (!activeNodeId) return { nodeIds, connectionIds };
-
-        const addNode = (nodeId: string) => {
-            nodeIds.add(nodeId);
-            if (nodeById.get(nodeId)?.type === CanvasNodeType.Group) nodes.forEach((node) => node.metadata?.groupId === nodeId && nodeIds.add(node.id));
-        };
-        addNode(activeNodeId);
-        connections.forEach((connection) => {
-            if (connection.fromNodeId !== activeNodeId && connection.toNodeId !== activeNodeId) return;
-            connectionIds.add(connection.id);
-            addNode(connection.fromNodeId);
-            addNode(connection.toNodeId);
-        });
-
-        return { nodeIds, connectionIds };
-    }, [activeNodeId, connections, nodeById, nodes]);
 
     // Panel/reference data is computed on demand for a single node instead of full maps for every node.
     // The old per-node maps rebuilt O(n^2) on every nodes change (e.g. every drag frame) and produced new
@@ -645,24 +637,9 @@ function InfiniteCanvasPage() {
         });
     }, []);
     const getMentionReferences = useCallback((node: CanvasNodeData) => buildNodeMentionReferences(node, nodesRef.current, connectionsRef.current), []);
-    // Stable scale accessor: nodes read live zoom for resize math without rerendering on every zoom frame.
-    const getViewportScale = useCallback(() => viewportRef.current.k, []);
-    // Passed only to the node with an open panel; a new identity re-renders that node so the panel reads fresh refs,
-    // without breaking React.memo for every other node.
-    const panelRefresh = useMemo(() => ({ nodes, connections, runningNodeId }), [nodes, connections, runningNodeId]);
-    const referenceConnectedNodeIds = useMemo(() => {
-        if (!referencePickerNodeId) return EMPTY_REFERENCE_IDS;
-        const sourceIds = connections.filter((connection) => connection.toNodeId === referencePickerNodeId).map((connection) => connection.fromNodeId);
-        const sources = nodes.filter((node) => sourceIds.includes(node.id));
-        return new Set([referencePickerNodeId, ...sources.flatMap((node) => (node.type === CanvasNodeType.Group ? [node.id, ...getGroupResourceNodes(node.id, nodes).map((child) => child.id)] : [node.id]))]);
-    }, [connections, nodes, referencePickerNodeId]);
     const { applyAgentOps } = useAgentBridge({
         projectId,
         title: currentProject?.title,
-        nodes,
-        connections,
-        selectedNodeIds,
-        viewport,
         nodesRef,
         connectionsRef,
         selectedNodeIdsRef,
@@ -776,12 +753,21 @@ function InfiniteCanvasPage() {
         setReferencePickerNodeId(null);
     }, [referencePickerNodeId]);
 
-    const selectNodeReference = useCallback((fromNodeId: string) => {
-        if (!referencePickerNodeId || referenceConnectedNodeIds.has(fromNodeId)) return;
-        const source = nodesRef.current.find((node) => node.id === fromNodeId);
-        if (!source || !isCanvasReferenceNode(source, nodesRef.current)) return;
-        setConnections((prev) => [...prev, { id: nanoid(), fromNodeId, toNodeId: referencePickerNodeId }]);
-    }, [referenceConnectedNodeIds, referencePickerNodeId]);
+    const selectNodeReference = useCallback(
+        (fromNodeId: string) => {
+            if (!referencePickerNodeId) return;
+            // Recompute the connected set from the store so the handler needs no per-render dependencies.
+            const world = useCanvasWorldStore.getState();
+            const sourceIds = world.connections.filter((connection) => connection.toNodeId === referencePickerNodeId).map((connection) => connection.fromNodeId);
+            const sources = world.nodes.filter((node) => sourceIds.includes(node.id));
+            const connectedIds = new Set([referencePickerNodeId, ...sources.flatMap((node) => (node.type === CanvasNodeType.Group ? [node.id, ...getGroupResourceNodes(node.id, world.nodes).map((child) => child.id)] : [node.id]))]);
+            if (connectedIds.has(fromNodeId)) return;
+            const source = world.nodes.find((node) => node.id === fromNodeId);
+            if (!source || !isCanvasReferenceNode(source, world.nodes)) return;
+            setConnections((prev) => [...prev, { id: nanoid(), fromNodeId, toNodeId: referencePickerNodeId }]);
+        },
+        [referencePickerNodeId, setConnections],
+    );
 
     useEffect(() => {
         if (!referencePickerNodeId) return;
@@ -2920,7 +2906,7 @@ function InfiniteCanvasPage() {
 
     return (
         <main className="flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.background, color: theme.node.text }}>
-            <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onInsertAsset={handleAssetInsert} />
+            <CanvasSidePanel onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onInsertAsset={handleAssetInsert} />
             <section className="relative min-w-0 flex-1 overflow-hidden">
                 <CanvasTopBar
                     title={currentProject?.title || t("canvas.projectPage.untitledCanvas")}
@@ -2948,11 +2934,9 @@ function InfiniteCanvasPage() {
 
                 <InfiniteCanvas
                     containerRef={containerRef}
-                    viewport={viewport}
                     tool={canvasTool}
                     backgroundMode={backgroundMode}
                     onViewportChange={(next) => {
-                        setViewport(next);
                         setContextMenu(null);
                     }}
                     onCanvasMouseDown={(event) => {
@@ -2967,88 +2951,51 @@ function InfiniteCanvasPage() {
                     onContextMenu={preventCanvasContextMenu}
                     onDrop={handleDrop}
                 >
-                    <svg className="absolute left-0 top-0 h-[10000px] w-[10000px] overflow-visible" style={{ pointerEvents: "none", transform: "translateZ(0)", zIndex: 0 }}>
-                        {connections
-                            .map((connection) => {
-                                const from = nodeById.get(connection.fromNodeId);
-                                const to = nodeById.get(connection.toNodeId);
-                                if (!from || !to) return null;
-
-                                return (
-                                    <ConnectionPath
-                                        key={connection.id}
-                                        connection={connection}
-                                        from={from}
-                                        to={to}
-                                        active={selectedConnectionId === connection.id || relatedHighlight.connectionIds.has(connection.id)}
-                                        onSelect={handleConnectionSelect}
-                                        onContextMenu={handleConnectionContextMenu}
-                                    />
-                                );
-                            })}
-                        {connectingParams ? <ActiveConnectionPath node={nodeById.get(connectingParams.nodeId)} handle={connectingParams} mouseWorld={mouseWorld} target={connectionTargetNodeId ? nodeById.get(connectionTargetNodeId) : undefined} /> : null}
-                    </svg>
-
-                    {visibleNodes.map((node) => (
-                        <CanvasNode
-                            key={node.id}
-                            data={node}
-                            getScale={getViewportScale}
-                            isSelected={selectedNodeIds.has(node.id)}
-                            isRelated={relatedHighlight.nodeIds.has(node.id)}
-                            isFocusRelated={activeNodeId === node.id}
-                            isConnectionTarget={connectionTargetNodeId === node.id}
-                            isConnecting={Boolean(connectingParams)}
-                            referenceSelectionState={!referencePickerNodeId ? undefined : node.id === referencePickerNodeId ? "target" : referenceConnectedNodeIds.has(node.id) || !isCanvasReferenceNode(node, nodes) ? "disabled" : "available"}
-                            showPanel={!isNodeResizing && dialogNodeId === node.id && !selectionBox && !getNodeDefinition(node.type)?.hidePanel}
-                            groupChildCount={groupChildCountById.get(node.id) || 0}
-                            isGroupDropTarget={dropTargetGroupId === node.id}
-                            batchExpanded={expandedBatchNodeIds.has(node.id)}
-                            showImageInfo={showImageInfo}
-                            getMentionReferences={getMentionReferences}
-                            panelRefresh={node.id === dialogNodeId && !isNodeResizing && !selectionBox ? panelRefresh : undefined}
-                            pluginHost={pluginHost}
-                            registryVersion={nodeRegistryVersion}
-                            renderPanel={renderNodePanel}
-                            renderNodeContent={renderNodeContentPanel}
-                            onMouseDown={handleNodeMouseDown}
-                            onSelectCapture={handleNodeSelectCapture}
-                            onHoverStart={handleNodeHoverStart}
-                            onHoverEnd={handleNodeHoverEnd}
-                            onConnectStart={handleConnectStart}
-                            onResizeStart={handleNodeResizeStart}
-                            onResize={handleNodeResize}
-                            onResizeEnd={handleNodeResizeEnd}
-                            onContentChange={handleNodeContentChange}
-                            onTitleChange={handleNodeTitleChange}
-                            onToggleBatch={toggleBatchExpanded}
-                            onSetBatchPrimary={setBatchPrimary}
-                            onDuplicateBatchImage={duplicateBatchImage}
-                            onDownloadBatchImage={downloadBatchImage}
-                            onRetryBatchImage={retryBatchImage}
-                            onDeleteBatchImage={deleteBatchImage}
-                            onRetry={handleNodeRetry}
-                            onViewImage={handleNodeViewImage}
-                            onSelectReference={selectNodeReference}
-                            onContextMenu={handleNodeContextMenu}
-                        />
-                    ))}
-
+                    <CanvasWorld
+                        containerRef={containerRef}
+                        size={size}
+                        activeNodeId={activeNodeId}
+                        runningNodeId={runningNodeId}
+                        isNodeDragging={isNodeDragging}
+                        isNodeResizing={isNodeResizing}
+                        expandedBatchNodeIds={expandedBatchNodeIds}
+                        dropTargetGroupId={dropTargetGroupId}
+                        referencePickerNodeId={referencePickerNodeId}
+                        selectionBox={selectionBox}
+                        connectingParams={connectingParams}
+                        connectionTargetNodeId={connectionTargetNodeId}
+                        mouseWorld={mouseWorld}
+                        dialogNodeId={dialogNodeId}
+                        showImageInfo={showImageInfo}
+                        pluginHost={pluginHost}
+                        nodeRegistryVersion={nodeRegistryVersion}
+                        renderNodePanel={renderNodePanel}
+                        renderNodeContentPanel={renderNodeContentPanel}
+                        getMentionReferences={getMentionReferences}
+                        onConnectionSelect={handleConnectionSelect}
+                        onConnectionContextMenu={handleConnectionContextMenu}
+                        onNodeMouseDown={handleNodeMouseDown}
+                        onNodeSelectCapture={handleNodeSelectCapture}
+                        onNodeHoverStart={handleNodeHoverStart}
+                        onNodeHoverEnd={handleNodeHoverEnd}
+                        onConnectStart={handleConnectStart}
+                        onNodeResizeStart={handleNodeResizeStart}
+                        onNodeResize={handleNodeResize}
+                        onNodeResizeEnd={handleNodeResizeEnd}
+                        onNodeContentChange={handleNodeContentChange}
+                        onNodeTitleChange={handleNodeTitleChange}
+                        onToggleBatch={toggleBatchExpanded}
+                        onSetBatchPrimary={setBatchPrimary}
+                        onDuplicateBatchImage={duplicateBatchImage}
+                        onDownloadBatchImage={downloadBatchImage}
+                        onRetryBatchImage={retryBatchImage}
+                        onDeleteBatchImage={deleteBatchImage}
+                        onNodeRetry={handleNodeRetry}
+                        onNodeViewImage={handleNodeViewImage}
+                        onSelectReference={selectNodeReference}
+                        onNodeContextMenu={handleNodeContextMenu}
+                    >
                     {referencePickerNodeId ? <button type="button" className="absolute left-1/2 top-4 z-[90] -translate-x-1/2 rounded-full border px-4 py-2 text-sm font-medium shadow-lg backdrop-blur" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border }} onClick={exitNodeReferenceSelection}>{t("canvas.references.selectingHint")}</button> : null}
-
-                    {selectionBox ? (
-                        <svg
-                            className="pointer-events-none absolute z-[100] overflow-visible"
-                            style={{
-                                left: Math.min(selectionBox.startWorldX, selectionBox.currentWorldX),
-                                top: Math.min(selectionBox.startWorldY, selectionBox.currentWorldY),
-                                width: Math.abs(selectionBox.currentWorldX - selectionBox.startWorldX),
-                                height: Math.abs(selectionBox.currentWorldY - selectionBox.startWorldY),
-                            }}
-                        >
-                            <rect width="100%" height="100%" fill={theme.canvas.selectionFill} stroke={theme.canvas.selectionStroke} strokeOpacity={0.55} strokeWidth={1 / viewport.k} strokeDasharray={`${6 / viewport.k} ${4 / viewport.k}`} />
-                        </svg>
-                    ) : null}
                     {pendingConnectionCreate ? <ConnectionCreateMenu pending={pendingConnectionCreate} onCreate={(type) => createConnectedNode(type, pendingConnectionCreate)} onClose={cancelPendingConnectionCreate} /> : null}
                     {nodeCreatePosition ? (
                         <NodeCreateMenu
@@ -3060,11 +3007,11 @@ function InfiniteCanvasPage() {
                             onClose={() => setNodeCreatePosition(null)}
                         />
                     ) : null}
-                </InfiniteCanvas>
+                </CanvasWorld>
+            </InfiniteCanvas>
 
                 <CanvasNodeHoverToolbar
                     node={isNodeDragging || isNodeResizing || nodeImageSettingsOpen || expandedBatchNodeIds.has(toolbarNode?.id || "") ? null : toolbarNode}
-                    viewport={viewport}
                     extraTools={toolbarNode ? buildNodeToolbarItems(toolbarNode) : undefined}
                     onKeep={keepNodeToolbar}
                     onLeave={hideNodeToolbar}
@@ -3113,9 +3060,9 @@ function InfiniteCanvasPage() {
                     onShowImageInfoChange={setShowImageInfo}
                 />
 
-                {isMiniMapOpen ? <Minimap nodes={nodes} viewport={viewport} viewportSize={size} onViewportChange={setViewport} /> : null}
+                {isMiniMapOpen ? <Minimap viewportSize={size} /> : null}
 
-                <CanvasZoomControls scale={viewport.k} onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
+                <CanvasZoomControls onScaleChange={setZoomScale} onReset={resetViewport} isMiniMapOpen={isMiniMapOpen} onToggleMiniMap={() => setIsMiniMapOpen((value) => !value)} />
 
                 {contextMenu ? (
                     <CanvasNodeContextMenu
@@ -3199,3 +3146,248 @@ function InfiniteCanvasPage() {
         </main>
     );
 }
+
+// Granular node lookup: rerenders the caller only when that specific node object changes.
+function useWorldNode(nodeId: string | null | undefined) {
+    return useCanvasWorldStore((state) => (nodeId ? state.byId.get(nodeId) ?? null : null));
+}
+
+type CanvasWorldProps = {
+    containerRef: React.RefObject<HTMLDivElement | null>;
+    size: { width: number; height: number };
+    activeNodeId: string | null;
+    runningNodeId: string | null;
+    isNodeDragging: boolean;
+    isNodeResizing: boolean;
+    expandedBatchNodeIds: Set<string>;
+    dropTargetGroupId: string | null;
+    referencePickerNodeId: string | null;
+    selectionBox: SelectionBox | null;
+    connectingParams: ConnectionHandle | null;
+    connectionTargetNodeId: string | null;
+    mouseWorld: Position;
+    dialogNodeId: string | null;
+    showImageInfo: boolean;
+    pluginHost?: CanvasPluginHost;
+    nodeRegistryVersion: number;
+    renderNodePanel: (node: CanvasNodeData) => ReactNode;
+    renderNodeContentPanel: (node: CanvasNodeData) => ReactNode;
+    getMentionReferences: (node: CanvasNodeData) => CanvasResourceReference[];
+    onConnectionSelect: (connectionId: string) => void;
+    onConnectionContextMenu: (event: ReactMouseEvent<SVGPathElement>, connectionId: string) => void;
+    onNodeMouseDown: (event: ReactMouseEvent, nodeId: string) => void;
+    onNodeSelectCapture: (event: ReactMouseEvent, nodeId: string) => void;
+    onNodeHoverStart: (nodeId: string) => void;
+    onNodeHoverEnd: (nodeId: string) => void;
+    onConnectStart: (event: ReactMouseEvent, nodeId: string, handleType: "source" | "target") => void;
+    onNodeResizeStart: (nodeId: string) => void;
+    onNodeResize: (nodeId: string, width: number, height: number, position?: Position) => void;
+    onNodeResizeEnd: (nodeId: string) => void;
+    onNodeContentChange: (nodeId: string, content: string) => void;
+    onNodeTitleChange: (nodeId: string, title: string) => void;
+    onToggleBatch?: (nodeId: string) => void;
+    onSetBatchPrimary?: (nodeId: string, itemId: string) => void;
+    onDuplicateBatchImage?: (node: CanvasNodeData, imageId: string) => void;
+    onDownloadBatchImage?: (node: CanvasNodeData, imageId: string) => void;
+    onRetryBatchImage?: (node: CanvasNodeData, imageId: string) => void;
+    onDeleteBatchImage?: (nodeId: string, imageId: string) => void;
+    onNodeRetry: (node: CanvasNodeData) => void;
+    onNodeViewImage: (node: CanvasNodeData, imageId?: string) => void;
+    onSelectReference: (fromNodeId: string) => void;
+    onNodeContextMenu: (event: ReactMouseEvent, nodeId: string) => void;
+    children?: ReactNode;
+};
+
+// Subscription boundary: CanvasWorld owns every high-frequency store slice (nodes, connections, selection,
+// viewport), so interaction frames rerender only this subtree while the page body stays idle.
+function CanvasWorld({
+    containerRef,
+    size,
+    activeNodeId,
+    runningNodeId,
+    isNodeDragging,
+    isNodeResizing,
+    expandedBatchNodeIds,
+    dropTargetGroupId,
+    referencePickerNodeId,
+    selectionBox,
+    connectingParams,
+    connectionTargetNodeId,
+    mouseWorld,
+    dialogNodeId,
+    showImageInfo,
+    pluginHost,
+    nodeRegistryVersion,
+    renderNodePanel,
+    renderNodeContentPanel,
+    getMentionReferences,
+    onConnectionSelect,
+    onConnectionContextMenu,
+    onNodeMouseDown,
+    onNodeSelectCapture,
+    onNodeHoverStart,
+    onNodeHoverEnd,
+    onConnectStart,
+    onNodeResizeStart,
+    onNodeResize,
+    onNodeResizeEnd,
+    onNodeContentChange,
+    onNodeTitleChange,
+    onToggleBatch,
+    onSetBatchPrimary,
+    onDuplicateBatchImage,
+    onDownloadBatchImage,
+    onRetryBatchImage,
+    onDeleteBatchImage,
+    onNodeRetry,
+    onNodeViewImage,
+    onSelectReference,
+    onNodeContextMenu,
+    children,
+}: CanvasWorldProps) {
+    const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    const nodes = useCanvasWorldStore((state) => state.nodes);
+    const connections = useCanvasWorldStore((state) => state.connections);
+    const selectedNodeIds = useCanvasWorldStore((state) => state.selectedNodeIds);
+    const selectedConnectionId = useCanvasWorldStore((state) => state.selectedConnectionId);
+    const viewport = useCanvasWorldStore((state) => state.viewport);
+    const getViewportScale = useCallback(() => useCanvasWorldStore.getState().viewport.k, []);
+
+    const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+    const visibleNodes = useMemo(() => {
+        const padding = 280;
+        const rect = containerRef.current?.getBoundingClientRect();
+        const width = rect?.width || size.width;
+        const height = rect?.height || size.height;
+        const viewLeft = -viewport.x / viewport.k - padding;
+        const viewTop = -viewport.y / viewport.k - padding;
+        const viewRight = viewLeft + width / viewport.k + padding * 2;
+        const viewBottom = viewTop + height / viewport.k + padding * 2;
+
+        return nodes.filter((node) => node.position.x + node.width > viewLeft && node.position.x < viewRight && node.position.y + node.height > viewTop && node.position.y < viewBottom);
+    }, [containerRef, nodes, size.height, size.width, viewport.k, viewport.x, viewport.y]);
+    const groupChildCountById = useMemo(() => {
+        const map = new Map<string, number>();
+        nodes.forEach((node) => {
+            const groupId = node.metadata?.groupId;
+            if (groupId) map.set(groupId, (map.get(groupId) || 0) + 1);
+        });
+        return map;
+    }, [nodes]);
+    const relatedHighlight = useMemo(() => {
+        const nodeIds = new Set<string>();
+        const connectionIds = new Set<string>();
+
+        if (!activeNodeId) return { nodeIds, connectionIds };
+
+        const addNode = (nodeId: string) => {
+            nodeIds.add(nodeId);
+            if (nodeById.get(nodeId)?.type === CanvasNodeType.Group) nodes.forEach((node) => node.metadata?.groupId === nodeId && nodeIds.add(node.id));
+        };
+        addNode(activeNodeId);
+        connections.forEach((connection) => {
+            if (connection.fromNodeId !== activeNodeId && connection.toNodeId !== activeNodeId) return;
+            connectionIds.add(connection.id);
+            addNode(connection.fromNodeId);
+            addNode(connection.toNodeId);
+        });
+
+        return { nodeIds, connectionIds };
+    }, [activeNodeId, connections, nodeById, nodes]);
+    const referenceConnectedNodeIds = useMemo(() => {
+        if (!referencePickerNodeId) return EMPTY_REFERENCE_IDS;
+        const sourceIds = connections.filter((connection) => connection.toNodeId === referencePickerNodeId).map((connection) => connection.fromNodeId);
+        const sources = nodes.filter((node) => sourceIds.includes(node.id));
+        return new Set([referencePickerNodeId, ...sources.flatMap((node) => (node.type === CanvasNodeType.Group ? [node.id, ...getGroupResourceNodes(node.id, nodes).map((child) => child.id)] : [node.id]))]);
+    }, [connections, nodes, referencePickerNodeId]);
+    // Passed only to the node with an open panel; a new identity re-renders that node so the panel reads fresh refs,
+    // without breaking React.memo for every other node.
+    const panelRefresh = useMemo(() => ({ nodes, connections, runningNodeId }), [nodes, connections, runningNodeId]);
+
+    return (
+        <>
+            <svg className="absolute left-0 top-0 h-[10000px] w-[10000px] overflow-visible" style={{ pointerEvents: "none", transform: "translateZ(0)", zIndex: 0 }}>
+                {connections
+                    .map((connection) => {
+                        const from = nodeById.get(connection.fromNodeId);
+                        const to = nodeById.get(connection.toNodeId);
+                        if (!from || !to) return null;
+
+                        return (
+                            <ConnectionPath
+                                key={connection.id}
+                                connection={connection}
+                                from={from}
+                                to={to}
+                                active={selectedConnectionId === connection.id || relatedHighlight.connectionIds.has(connection.id)}
+                                onSelect={onConnectionSelect}
+                                onContextMenu={onConnectionContextMenu}
+                            />
+                        );
+                    })}
+                {connectingParams ? <ActiveConnectionPath node={nodeById.get(connectingParams.nodeId)} handle={connectingParams} mouseWorld={mouseWorld} target={connectionTargetNodeId ? nodeById.get(connectionTargetNodeId) : undefined} /> : null}
+            </svg>
+
+            {visibleNodes.map((node) => (
+                <CanvasNode
+                    key={node.id}
+                    data={node}
+                    getScale={getViewportScale}
+                    isSelected={selectedNodeIds.has(node.id)}
+                    isRelated={relatedHighlight.nodeIds.has(node.id)}
+                    isFocusRelated={activeNodeId === node.id}
+                    isConnectionTarget={connectionTargetNodeId === node.id}
+                    isConnecting={Boolean(connectingParams)}
+                    referenceSelectionState={!referencePickerNodeId ? undefined : node.id === referencePickerNodeId ? "target" : referenceConnectedNodeIds.has(node.id) || !isCanvasReferenceNode(node, nodes) ? "disabled" : "available"}
+                    showPanel={!isNodeResizing && dialogNodeId === node.id && !selectionBox && !getNodeDefinition(node.type)?.hidePanel}
+                    groupChildCount={groupChildCountById.get(node.id) || 0}
+                    isGroupDropTarget={dropTargetGroupId === node.id}
+                    batchExpanded={expandedBatchNodeIds.has(node.id)}
+                    showImageInfo={showImageInfo}
+                    getMentionReferences={getMentionReferences}
+                    panelRefresh={node.id === dialogNodeId && !isNodeResizing && !selectionBox ? panelRefresh : undefined}
+                    pluginHost={pluginHost}
+                    registryVersion={nodeRegistryVersion}
+                    renderPanel={renderNodePanel}
+                    renderNodeContent={renderNodeContentPanel}
+                    onMouseDown={onNodeMouseDown}
+                    onSelectCapture={onNodeSelectCapture}
+                    onHoverStart={onNodeHoverStart}
+                    onHoverEnd={onNodeHoverEnd}
+                    onConnectStart={onConnectStart}
+                    onResizeStart={onNodeResizeStart}
+                    onResize={onNodeResize}
+                    onResizeEnd={onNodeResizeEnd}
+                    onContentChange={onNodeContentChange}
+                    onTitleChange={onNodeTitleChange}
+                    onToggleBatch={onToggleBatch}
+                    onSetBatchPrimary={onSetBatchPrimary}
+                    onDuplicateBatchImage={onDuplicateBatchImage}
+                    onDownloadBatchImage={onDownloadBatchImage}
+                    onRetryBatchImage={onRetryBatchImage}
+                    onDeleteBatchImage={onDeleteBatchImage}
+                    onRetry={onNodeRetry}
+                    onViewImage={onNodeViewImage}
+                    onSelectReference={onSelectReference}
+                    onContextMenu={onNodeContextMenu}
+                />
+            ))}
+
+            {selectionBox ? (
+                <svg
+                    className="pointer-events-none absolute z-[100] overflow-visible"
+                    style={{
+                        left: Math.min(selectionBox.startWorldX, selectionBox.currentWorldX),
+                        top: Math.min(selectionBox.startWorldY, selectionBox.currentWorldY),
+                        width: Math.abs(selectionBox.currentWorldX - selectionBox.startWorldX),
+                        height: Math.abs(selectionBox.currentWorldY - selectionBox.startWorldY),
+                    }}
+                >
+                    <rect width="100%" height="100%" fill={theme.canvas.selectionFill} stroke={theme.canvas.selectionStroke} strokeOpacity={0.55} strokeWidth={1 / viewport.k} strokeDasharray={`${6 / viewport.k} ${4 / viewport.k}`} />
+                </svg>
+            ) : null}
+            {children}
+        </>
+    );
+}
+

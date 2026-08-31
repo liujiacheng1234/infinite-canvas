@@ -2,14 +2,14 @@ import React, { useEffect, useRef, useState } from "react";
 
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
+import { useCanvasWorldStore } from "@/stores/canvas/use-canvas-world-store";
 import type { ViewportTransform } from "@/types/canvas";
 
 type InfiniteCanvasProps = {
     containerRef: React.RefObject<HTMLDivElement | null>;
-    viewport: ViewportTransform;
     tool: "select" | "pan";
     backgroundMode?: CanvasBackgroundMode;
-    onViewportChange: (viewport: ViewportTransform) => void;
+    onViewportChange?: (viewport: ViewportTransform) => void;
     onCanvasMouseDown?: (event: React.PointerEvent<HTMLDivElement>) => void;
     onCanvasDeselect?: () => void;
     onCanvasDoubleClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -18,8 +18,11 @@ type InfiniteCanvasProps = {
     children: React.ReactNode;
 };
 
-export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = "lines", onViewportChange, onCanvasMouseDown, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
+export function InfiniteCanvas({ containerRef, tool, backgroundMode = "lines", onViewportChange, onCanvasMouseDown, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
+    // Viewport lives in the world store; this is the only live consumer besides minimap and zoom controls.
+    const viewport = useCanvasWorldStore((state) => state.viewport);
+    const setViewport = useCanvasWorldStore((state) => state.setViewport);
     const panState = useRef({
         isPanning: false,
         startX: 0,
@@ -104,15 +107,19 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
         const worldX = (mouseX - base.x) / base.k;
         const worldY = (mouseY - base.y) / base.k;
 
-        pendingZoomRef.current = {
+        const next: ViewportTransform = {
             x: mouseX - worldX * newScale,
             y: mouseY - worldY * newScale,
             k: newScale,
         };
+        pendingZoomRef.current = next;
         if (zoomFrameRef.current) return;
         zoomFrameRef.current = requestAnimationFrame(() => {
             zoomFrameRef.current = null;
-            if (pendingZoomRef.current) onViewportChange(pendingZoomRef.current);
+            if (pendingZoomRef.current) {
+                setViewport(pendingZoomRef.current);
+                onViewportChange?.(pendingZoomRef.current);
+            }
             pendingZoomRef.current = null;
         });
     };
@@ -174,7 +181,10 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
             if (frameRef.current) return;
             frameRef.current = requestAnimationFrame(() => {
                 frameRef.current = null;
-                if (nextViewportRef.current) onViewportChange(nextViewportRef.current);
+                if (nextViewportRef.current) {
+                    setViewport(nextViewportRef.current);
+                    onViewportChange?.(nextViewportRef.current);
+                }
             });
         };
 

@@ -13,6 +13,7 @@ import { PromptDetailDialog } from "@/pages/prompts/components/prompt-detail-dia
 import { fetchSourcePrompts, type Prompt } from "@/services/api/prompts";
 import { uploadMediaFile } from "@/services/file-storage";
 import { uploadImage } from "@/services/image-storage";
+import { useCanvasWorldStore } from "@/stores/canvas/use-canvas-world-store";
 import { useAssetStore, type Asset, type AssetKind } from "@/stores/use-asset-store";
 import { usePromptSourceStore } from "@/stores/use-prompt-source-store";
 import { CANVAS_SIDE_PANEL_MAX_WIDTH, CANVAS_SIDE_PANEL_MIN_WIDTH, CANVAS_SIDE_PANEL_MOTION_MS, useCanvasSidePanelStore } from "@/stores/use-canvas-side-panel-store";
@@ -27,8 +28,6 @@ const PANEL_EASE = [0.22, 1, 0.36, 1] as const;
 type PanelTab = "canvas" | "assets" | "prompts";
 
 type Props = {
-    nodes: CanvasNodeData[];
-    selectedNodeIds: Set<string>;
     onFocusNode: (nodeId: string) => void;
     onPreviewNode: (nodeId: string) => void;
     onInsertAsset: (payload: InsertAssetPayload) => void;
@@ -50,7 +49,11 @@ const STATUS_COLOR: Record<string, string> = {
     idle: "transparent",
 };
 
-export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, onInsertAsset }: Props) {
+export function CanvasSidePanel({ onFocusNode, onPreviewNode, onInsertAsset }: Props) {
+    // Subscribing to the world store directly keeps this component independent of page rerenders;
+    // the deferred nodes below absorb per-frame churn while dragging.
+    const nodes = useCanvasWorldStore((state) => state.nodes);
+    const selectedNodeIds = useCanvasWorldStore((state) => state.selectedNodeIds);
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const [tab, setTab] = useState<PanelTab>("canvas");

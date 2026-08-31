@@ -4,6 +4,7 @@
 
 + [优化] 画布大节点/连线数量下的拖拽与缩放性能：面板渲染回调改读 refs、`@` 引用与连接节点改为按需计算、滚轮缩放加 rAF 节流、左侧元素列表延迟渲染，拖拽时不再全量重渲染所有可见节点。
 + [优化] 缩放/平移不再重渲染任何节点：节点 scale 改为稳定 getScale 读取（仅拉伸手柄时取实时值）、连线 ConnectionPath 改 memo 化稳定回调、节点层加 will-change 提升为合成层、小地图节点矩形延迟渲染。
++ [优化] 画布状态架构重构：节点/连线/选区/视口迁移到独立 world store 分片订阅，拖拽与缩放帧不再重渲染页面本体；Agent 快照改防抖推送，历史/自动保存改订阅驱动，操作签名保持兼容。
 + [修复] Canvas Agent `canvas_update_node_text` 对非文本节点只更新标题，不再覆盖图片、视频等节点的 metadata.content 媒体地址。
 + [修复] 图片参考链读取优先使用 IndexedDB 的 storageKey 原图，dataUrl/url 仅作回退，避免内容字段被污染后拿到坏地址。
 + [修复] Canvas Agent `canvas_read_image` 服务端缺少透传分支，工具声明后运行时始终报「未知工具」；现转发至页面执行（页面读图实现早已就绪：读 IndexedDB → 降采样 1024 → base64，经 MCP 层包装为 image content），Agent 看图与图片落盘验证链路恢复。
