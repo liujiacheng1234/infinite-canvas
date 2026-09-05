@@ -37,6 +37,8 @@
 - **MCP 工具面精简**：移除依赖对话附件的 `canvas_create_attachment_nodes` 工具；保留完整的画布读写、生成流程、工作台、提示词库和素材工具。
 - **文档与治理对齐**：移除 Codex 插件与侧边栏对话相关文档，恢复并更新 `skills/` 提示词文档；版本检查、GitHub 链接、安全报告渠道全部指向本仓库。
 
+fork 起的逐项变更记录见 [CHANGELOG](CHANGELOG.md) 的 `Unreleased` 段落，最早一条为「移除未使用的 `@ant-design/pro-components` 依赖」；该段落之后的「上游遗留」与历史版本条目来自原项目，仅作参考。
+
 ## 快速开始
 
 ### 本地开发
