@@ -27,17 +27,19 @@
 
 完整功能说明见 [功能介绍](docs/content/docs/overview/features.mdx)。
 
-## 相对上游的主要变化
+## 相对上游的优势
 
-本项目 fork 自 [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas)，此后按自身方向独立演进，不再跟随上游更新。相对上游的主要变化：
+本项目 fork 自 [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas)，此后按自身方向独立演进，不再跟随上游更新。相比上游 main 分支：
 
-- **移除内置 Codex 对话运行时**：删除 `@openai/codex` 依赖、Codex app-server 集成、Claude CLI 适配器和 Skills 存储，canvas-agent 精简为纯 MCP 桥接（HTTP 服务 + stdio MCP）。
-- **移除网页右侧对话面板**：删除整个对话 UI（消息流、线程历史、Skills 面板、权限审批、附件上传等），网页只保留画布执行端职责。
-- **Agent 连接自动化**：新增全局连接 hook，应用启动后自动静默连接本地 Agent；`#agentUrl=&agentToken=` URL 参数可引导连接；配置页和画布顶栏提供连接状态与配置入口。
-- **MCP 工具面精简**：移除依赖对话附件的 `canvas_create_attachment_nodes` 工具；保留完整的画布读写、生成流程、工作台、提示词库和素材工具。
-- **文档与治理对齐**：移除 Codex 插件与侧边栏对话相关文档，恢复并更新 `skills/` 提示词文档；版本检查、GitHub 链接、安全报告渠道全部指向本仓库。
+| 维度 | 上游 main | 本 fork |
+|---|---|---|
+| Agent 接入 | 内置 Codex app-server 运行时和右侧对话面板，重、绑定单一客户端，界面被对话 UI 占据 | **纯 MCP 桥接**：拆掉全部内置运行时，任何 MCP 客户端（Codex CLI / Claude Code / pi…）平等接入；网页回到纯画布，连接全自动（启动即连、URL 引导、配置页与顶栏随时改） |
+| Agent 读画布 | 概览一次性返回大 JSON，节点 id 为长 UUID，无法看图、读不到全文 | **分层读取**：表头行概览 + 稳定短引用（150 节点概览再省约 1K token）；`canvas_get_nodes` 按需读全文和上下游邻居，`canvas_read_image` 直接看图 |
+| Agent 写画布 | 返回全量快照，写失败要靠重读才发现 | **逐条执行回执**：每个 op 的成功/失败/原因、新建节点 id、被断开的连线一次返回，失败立即修正，不用猜 |
+| 画布性能 | 状态变更全量广播，拖拽/缩放帧内重渲染所有可见节点 | **world store 分片订阅**：拖拽、缩放零节点重渲染，连线 memo 化、滚轮 rAF 节流、小地图延迟渲染，大画布依然顺滑 |
+| 依赖健康度 | 捆绑 `@openai/codex` 运行时，`@ant-design/pro-components` 触发 antd 6 peer 冲突导致 npm install 失败 | 移除全部对话运行时依赖，npm install 一次通过 |
 
-fork 起的逐项变更记录见 [CHANGELOG](CHANGELOG.md) 的 `Unreleased` 段落，最早一条为「移除未使用的 `@ant-design/pro-components` 依赖」；该段落之后的「上游遗留」与历史版本条目来自原项目，仅作参考。
+逐项变更记录见 [CHANGELOG](CHANGELOG.md) 的 `Unreleased` 段落，最早一条为「移除未使用的 `@ant-design/pro-components` 依赖」；该段落之后的「上游遗留」与历史版本条目来自原项目，仅作参考。
 
 ## 快速开始
 
