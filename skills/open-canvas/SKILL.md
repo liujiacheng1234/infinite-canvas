@@ -20,10 +20,10 @@ node dist/index.js
 
 2. 从启动输出取得 `Local URL` 和 `Connect token`。
 
-3. 在浏览器打开：
+3. 在浏览器打开你自己部署的画布站点：
 
 ```text
-https://canvas.best/canvas?mode=new#agentUrl=<Local URL>&agentToken=<Connect token>
+https://<你的画布站点地址>/canvas?mode=new#agentUrl=<Local URL>&agentToken=<Connect token>
 ```
 
 ## 本地版

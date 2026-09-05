@@ -2,6 +2,8 @@
 
 ## Unreleased
 
++ [调整] 文档与门面对齐独立项目：重写 README（新增「相对上游的主要变化」小节），文档站移除上游 logo/图标、在线体验与 QQ 链接及旧 UI 截图，GitHub 链接与贡献者/Star History 改为指向本仓库，清理原作者安全报告邮箱与无引用的赞助商图片，MCP 接入文档统一为本地构建方式。
+
 + [新增] 配置页新增「本地 Agent 连接」卡片：填写地址与 token、连接/断开、实时查看连接状态；画布顶栏状态点可点击展开连接表单，画布页内即可修改连接配置。恢复 `skills/` 下的 canvas、open-canvas skill 文档，内容对齐仅保留 MCP 后的现状。
 + [调整] 移除内置 Codex 与网页右侧对话面板：canvas-agent 仅保留 MCP 桥接能力（HTTP 服务 + stdio MCP），删除 Codex/Claude 适配器、Skills 存储与附件工具 `canvas_create_attachment_nodes`；网页端改为启动时自动静默连接本地 Agent 并在后台执行 MCP 工具调用，相关 Codex 插件文档与规划文档一并移除。
 

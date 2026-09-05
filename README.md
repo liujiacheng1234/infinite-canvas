@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="web/public/logo.svg" width="96" alt="infinite-canvas logo">
-</p>
-
 <h1 align="center">无限画布 (infinite-canvas)</h1>
 
 <p align="center">
@@ -30,6 +26,16 @@
 - 提示词库：内置 7 个开源提示词来源并支持自定义标准 JSON 来源，由浏览器前端直连并缓存到 IndexedDB。
 
 完整功能说明见 [功能介绍](docs/content/docs/overview/features.mdx)。
+
+## 相对上游的主要变化
+
+本项目 fork 自 [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas)，此后按自身方向独立演进，不再跟随上游更新。相对上游的主要变化：
+
+- **移除内置 Codex 对话运行时**：删除 `@openai/codex` 依赖、Codex app-server 集成、Claude CLI 适配器和 Skills 存储，canvas-agent 精简为纯 MCP 桥接（HTTP 服务 + stdio MCP）。
+- **移除网页右侧对话面板**：删除整个对话 UI（消息流、线程历史、Skills 面板、权限审批、附件上传等），网页只保留画布执行端职责。
+- **Agent 连接自动化**：新增全局连接 hook，应用启动后自动静默连接本地 Agent；`#agentUrl=&agentToken=` URL 参数可引导连接；配置页和画布顶栏提供连接状态与配置入口。
+- **MCP 工具面精简**：移除依赖对话附件的 `canvas_create_attachment_nodes` 工具；保留完整的画布读写、生成流程、工作台、提示词库和素材工具。
+- **文档与治理对齐**：移除 Codex 插件与侧边栏对话相关文档，恢复并更新 `skills/` 提示词文档；版本检查、GitHub 链接、安全报告渠道全部指向本仓库。
 
 ## 快速开始
 
