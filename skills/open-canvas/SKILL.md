@@ -9,10 +9,13 @@ description: 打开 Infinite Canvas 在线或本地画布，并自动连接本�
 
 ## 在线版
 
-1. 启动本地 Canvas Agent 并保持运行：
+1. 构建并启动本地 Canvas Agent 并保持运行：
 
 ```bash
-npx -y @basketikun/canvas-agent@latest
+cd canvas-agent
+npm install
+npm run build
+node dist/index.js
 ```
 
 2. 从启动输出取得 `Local URL` 和 `Connect token`。
@@ -33,10 +36,13 @@ npm install
 npm run dev
 ```
 
-2. 启动本地 Canvas Agent：
+2. 构建并启动本地 Canvas Agent：
 
 ```bash
-npx -y @basketikun/canvas-agent@latest
+cd canvas-agent
+npm install
+npm run build
+node dist/index.js
 ```
 
 3. 从启动输出取得 `Local URL` 和 `Connect token`，在浏览器打开：
@@ -50,7 +56,7 @@ npx -y @basketikun/canvas-agent@latest
 画布操作通过 `infinite-canvas` MCP 提供。在 MCP 客户端中注册：
 
 ```bash
-<client> mcp add infinite-canvas -- npx -y @basketikun/canvas-agent mcp
+<client> mcp add infinite-canvas -- node /path/to/infinite-canvas/canvas-agent/dist/index.js mcp
 ```
 
 上面启动的普通 Canvas Agent 负责提供 `Local URL` 和 `Connect token`，并与 MCP 进程读取同一份本地配置。画布网页打开后会自动连接本地 Agent；带 `#agentUrl=&agentToken=` 打开时会自动保存地址和 token，无需手动填写。也可以在网页「配置 → 本地 Agent 连接」中手动填写。
@@ -64,4 +70,4 @@ npx -y @basketikun/canvas-agent@latest
 
 ## 版本不匹配
 
-画布页面与本地 Agent 的通信协议版本必须一致。如果页面提示 Agent 版本过旧或连接被拒绝，说明 npx 缓存或已安装的 canvas-agent 是旧版本：先结束旧进程，再用上面的 `@latest` 命令重启，并在画布页面硬刷新（Ctrl+Shift+R）后重新连接。
+画布页面与本地 Agent 的通信协议版本必须一致。如果页面提示 Agent 版本过旧或连接被拒绝，说明本地 canvas-agent 是旧版本：重新拉取仓库、执行 `npm run build` 后重启，并在画布页面硬刷新（Ctrl+Shift+R）后重新连接。

@@ -5,7 +5,10 @@
 ## 启动
 
 ```bash
-npx -y @basketikun/canvas-agent
+cd canvas-agent
+npm install
+npm run build
+node dist/index.js
 ```
 
 启动后输出本机地址和 token：
@@ -20,29 +23,14 @@ Connect token: xxxxxx
 需要排查连接或工具调用问题时，可开启 Debug 模式：
 
 ```bash
-npx -y @basketikun/canvas-agent --debug
+node dist/index.js --debug
 ```
 
 Debug 日志会以 `[DEBUG][HH:mm:ss]` 等格式输出到终端，并按启动日期保存到 `~/.infinite-canvas/logs/canvas-agent-YYYY-MM-DD.log`；日志中的 token 与图片 Data URL 会自动隐藏。
 
-本仓库开发时也可以直接运行：
-
-```bash
-cd canvas-agent
-npm install
-npm run build
-node dist/index.js
-```
-
 ## 注册 MCP
 
 在 MCP 客户端中把 Canvas Agent 注册为 `infinite-canvas` MCP 服务：
-
-```bash
-<client> mcp add infinite-canvas -- npx -y @basketikun/canvas-agent mcp
-```
-
-本地开发时可直接指向构建产物：
 
 ```bash
 <client> mcp add infinite-canvas -- node /path/to/infinite-canvas/canvas-agent/dist/index.js mcp
