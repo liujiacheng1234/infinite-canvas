@@ -2,6 +2,9 @@
 
 ## Unreleased
 
++ [新增] 配置页新增「本地 Agent 连接」卡片：填写地址与 token、连接/断开、实时查看连接状态；画布顶栏状态点可点击展开连接表单，画布页内即可修改连接配置。恢复 `skills/` 下的 canvas、open-canvas skill 文档，内容对齐仅保留 MCP 后的现状。
++ [调整] 移除内置 Codex 与网页右侧对话面板：canvas-agent 仅保留 MCP 桥接能力（HTTP 服务 + stdio MCP），删除 Codex/Claude 适配器、Skills 存储与附件工具 `canvas_create_attachment_nodes`；网页端改为启动时自动静默连接本地 Agent 并在后台执行 MCP 工具调用，相关 Codex 插件文档与规划文档一并移除。
+
 + [修复] Canvas Agent `generation_get_status` 的 `nodeIds` 现与画布工具入参一致接受节点短引用（n1、n2…），转发前统一解析为真实节点 id。
 
 + [优化] 画布大节点/连线数量下的拖拽与缩放性能：面板渲染回调改读 refs、`@` 引用与连接节点改为按需计算、滚轮缩放加 rAF 节流、左侧元素列表延迟渲染，拖拽时不再全量重渲染所有可见节点。

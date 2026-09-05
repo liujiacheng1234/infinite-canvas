@@ -29,7 +29,12 @@ description: 操作 Infinite Canvas 当前网页画布，读取节点、选区�
 - 写入工具返回执行回执：每个 op 的成功/失败/原因、新建节点的短引用 id、被断开的连线，不再返回全量快照；需要看最新结构时再调 `canvas_get_state`，需要看内容时用 `canvas_get_nodes`。
 - 回执 `note` 为"连线已存在"表示重复连线被跳过，按成功处理即可。
 - 不要模拟鼠标点击，不要要求用户手动复制 JSON。
-- 写入画布的操作会由网页侧边栏做二次确认，按当前工具结果继续推进即可。
+
+## 站点级工具
+
+- 跨画布查找用 `canvas_list_projects`，跳转页面用 `site_navigate`（`/canvas/:id` 打开指定画布）。
+- 生图与视频工作台分别使用 `workbench_image_*`、`workbench_video_*`；提示词与素材分别使用 `prompts_search`、`assets_list`、`assets_add`；生成任务进度用 `generation_get_status`。
+- 只有用户明确说要在生图/视频工作台生成时，才使用 `workbench_image_*`、`workbench_video_*`；画布内的生成默认用 `canvas_generate_*`。
 
 ## 风格
 

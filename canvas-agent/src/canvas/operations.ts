@@ -124,12 +124,6 @@ export function buildCanvasToolRequest(name: ToolName, input: Record<string, unk
     throw new Error(`未知工具：${name}`);
 }
 
-/** 按最大边限制计算附件图片节点尺寸，并保持原始比例。 */
-export function fitAttachmentNodeSize(width: number, height: number) {
-    const scale = Math.min(1, 640 / width, 640 / height);
-    return { width: width * scale, height: height * scale };
-}
-
 /** 创建统一的批量画布操作请求。 */
 function applyOps(ops: unknown[]): CanvasToolRequest {
     return { name: "canvas_apply_ops", input: { ops } };

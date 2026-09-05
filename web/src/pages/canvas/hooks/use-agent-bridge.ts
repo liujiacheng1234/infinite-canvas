@@ -27,7 +27,7 @@ type AgentBridgeParams = {
 
 /**
  * Bridge between the canvas and local Agent: publish the current snapshot and apply/undo capabilities
- * to the Agent store for the local Codex panel. All members except applyAgentOps are internal.
+ * to the Agent store for MCP tool execution. All members except applyAgentOps are internal.
  * The snapshot is read from the world store and pushed debounced, so interaction frames do not
  * hammer the Agent store with per-frame updates.
  */

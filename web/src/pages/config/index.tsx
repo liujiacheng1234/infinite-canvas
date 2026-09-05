@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { AppConfigPanel } from "@/components/layout/app-config-modal";
+import { AgentConnectionCard } from "@/pages/config/components/agent-connection-card";
 
 export default function ConfigPage() {
     const { t } = useTranslation();
@@ -13,6 +14,7 @@ export default function ConfigPage() {
                     <p className="mt-1 text-sm text-stone-500">{t("config.description")}</p>
                 </div>
                 <AppConfigPanel />
+                <AgentConnectionCard />
             </div>
         </main>
     );

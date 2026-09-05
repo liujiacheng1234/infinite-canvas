@@ -32,14 +32,16 @@ description: Major features available in the current project
 - Support image count, aspect ratio, quality, transparent backgrounds, reasoning effort, and custom invocation scripts.
 - Support OpenAI-style video endpoints.
 
-## Canvas Agent
+## Local MCP bridge
 
-- Connect local Codex through Canvas Agent and MCP without giving a web server direct access to browser state.
-- Read the active canvas, selection, nodes, edges, generation status, and apply structured operations.
-- Use Codex from the browser side panel with streaming responses, history, approvals, permissions, diagnostics, and local Skills.
-- Isolate active canvases and turns across multiple browser tabs.
+Canvas Agent bridges the `infinite-canvas` MCP tools to the canvas open in your browser:
 
-See [Codex App Plugin](/docs/overview/codex-app-plugin) for installation and usage.
+- Any MCP-capable client (Codex CLI, Claude Code, pi, etc.) can read and operate the active canvas.
+- The browser only talks to the local Canvas Agent; no browser state is exposed to a server.
+- Multiple tabs are isolated: tool calls always target the most recently activated canvas tab.
+- Site-level tools cover the canvas list, Image/Video Studio, prompts, and assets.
+
+See [Canvas Agent](https://github.com/liujiacheng1234/infinite-canvas/blob/main/canvas-agent/README.md).
 
 ## Plugin system
 

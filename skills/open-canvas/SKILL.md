@@ -17,7 +17,7 @@ npx -y @basketikun/canvas-agent@latest
 
 2. 从启动输出取得 `Local URL` 和 `Connect token`。
 
-3. 在 Codex 右侧浏览器打开：
+3. 在浏览器打开：
 
 ```text
 https://canvas.best/canvas?mode=new#agentUrl=<Local URL>&agentToken=<Connect token>
@@ -29,8 +29,8 @@ https://canvas.best/canvas?mode=new#agentUrl=<Local URL>&agentToken=<Connect tok
 
 ```bash
 cd web
-bun install
-bun run dev
+npm install
+npm run dev
 ```
 
 2. 启动本地 Canvas Agent：
@@ -39,7 +39,7 @@ bun run dev
 npx -y @basketikun/canvas-agent@latest
 ```
 
-3. 从启动输出取得 `Local URL` 和 `Connect token`，在 Codex 右侧浏览器打开：
+3. 从启动输出取得 `Local URL` 和 `Connect token`，在浏览器打开：
 
 ```text
 <Vite Local 地址>/canvas?mode=new#agentUrl=<Local URL>&agentToken=<Connect token>
@@ -47,8 +47,13 @@ npx -y @basketikun/canvas-agent@latest
 
 ## MCP 与连接地址
 
-插件在新的 Codex 任务中加载时会自动启动 `npx -y @basketikun/canvas-agent mcp`。这个 MCP 进程负责提供画布工具，不提供网页连接服务；
-上面启动的普通 Canvas Agent 负责提供 `Local URL` 和 `Connect token`。两个进程读取同一份本地配置，因此不需要用户手动填写地址或 token。
+画布操作通过 `infinite-canvas` MCP 提供。在 MCP 客户端中注册：
+
+```bash
+<client> mcp add infinite-canvas -- npx -y @basketikun/canvas-agent mcp
+```
+
+上面启动的普通 Canvas Agent 负责提供 `Local URL` 和 `Connect token`，并与 MCP 进程读取同一份本地配置。画布网页打开后会自动连接本地 Agent；带 `#agentUrl=&agentToken=` 打开时会自动保存地址和 token，无需手动填写。也可以在网页「配置 → 本地 Agent 连接」中手动填写。
 
 ## 打开模式
 
