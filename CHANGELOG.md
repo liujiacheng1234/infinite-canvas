@@ -4,6 +4,8 @@
 
 本段记录本 fork 独立演进后的全部改动，最早一条为「移除未使用的 `@ant-design/pro-components` 依赖」；上游的未发布条目与历史版本记录在本段之后，仅作参考。
 
++ [修复] 多张参考图编辑按 OpenAI 规范以重复 `image[]` 字段提交（单张仍为 `image`），避免严格兼容接口拒绝重复的 `image` 字段。
++ [修复] OpenAI 图片协议生成/编辑参数按官方规范收敛：n 上限从 15 调整为 10，gpt-image 模型 quality 为 standard/hd 时分别映射为 low/medium，output_format 仅对 gpt-image 模型发送；自定义尺寸保持原样发送不变。
 + [调整] 文档与门面对齐独立项目：重写 README（新增「相对上游的主要变化」小节），文档站移除上游 logo/图标、在线体验与 QQ 链接及旧 UI 截图，GitHub 链接与贡献者/Star History 改为指向本仓库，清理原作者安全报告邮箱与无引用的赞助商图片，MCP 接入文档统一为本地构建方式。
 
 + [新增] 配置页新增「本地 Agent 连接」卡片：填写地址与 token、连接/断开、实时查看连接状态；画布顶栏状态点可点击展开连接表单，画布页内即可修改连接配置。恢复 `skills/` 下的 canvas、open-canvas skill 文档，内容对齐仅保留 MCP 后的现状。
