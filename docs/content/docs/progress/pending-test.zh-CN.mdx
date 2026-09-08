@@ -5,6 +5,7 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
+- Gemini 生图配置字段：设置尺寸/比例时请求体应携带 generationConfig.imageConfig.aspectRatio/imageSize（官方字符串格式，如 16:9、2K），不再使用 responseFormat.image；14 种比例（含 1:4、1:8、4:1、8:1）与 512/1K/2K/4K 档位均保留，生图与图片编辑均应按设置的比例和尺寸出图。
 - 图片接口规范对齐：多张参考图编辑改按 OpenAI 规范以重复 `image[]` 字段提交，单张参考图仍为 `image`，蒙版仍为 `mask`，严格兼容接口下多图编辑不再丢图或报错；OpenAI 图片协议生成与编辑的 n 上限从 15 收敛为 10（超出按 10 截断）；gpt-image 模型 quality 为 standard/hd 时分别按 low/medium 发送，非 gpt-image 模型不再发送 output_format；自定义尺寸（如 9:20 等比例）仍按原样发送，行为不变。
 - 本地 Agent 连接 UI：配置页新增「本地 Agent 连接」卡片，可填写地址与 token、连接或断开并实时查看状态；画布顶栏的状态点可点击展开同一连接表单，无需离开画布页即可修改连接；恢复 `skills/` 目录的 canvas、open-canvas 两份 skill 文档，内容与仅保留 MCP 后的现状对齐。
 - 移除内置 Codex：canvas-agent 仅保留 MCP 桥接（HTTP 服务 + stdio MCP）；网页端移除右侧对话面板，已保存过本地 Agent 地址和 token 时启动后自动静默连接，MCP 客户端仍可跨标签页读取和操作当前画布；`canvas_create_attachment_nodes` 工具、内置 Codex/Claude 适配器、Skills 存储与 Codex 插件相关文档均已删除。
