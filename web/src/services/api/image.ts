@@ -110,7 +110,6 @@ const QUALITY_ALIASES: Record<string, string> = {
 };
 const DEFAULT_IMAGE_SHORT_SIDE = 1024;
 const IMAGE_SIZE_STEP = 16;
-const IMAGE_MIN_PIXELS = 655360;
 const IMAGE_MAX_PIXELS = 8294400;
 const IMAGE_MAX_EDGE = 3840;
 const IMAGE_MAX_RATIO = 3;
@@ -185,11 +184,9 @@ function parseImageDimensions(value: string) {
 
 function validateImageSize(width: number, height: number) {
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) throw new Error(apiText("positiveImageDimensions"));
-    if (width % IMAGE_SIZE_STEP !== 0 || height % IMAGE_SIZE_STEP !== 0) throw new Error(apiText("imageDimensionStep"));
     if (Math.max(width, height) > IMAGE_MAX_EDGE) throw new Error(apiText("imageEdgeLimit"));
     if (Math.max(width, height) / Math.min(width, height) > IMAGE_MAX_RATIO) throw new Error(apiText("imageRatioLimit"));
-    const pixels = width * height;
-    if (pixels < IMAGE_MIN_PIXELS || pixels > IMAGE_MAX_PIXELS) throw new Error(apiText("imagePixelLimit"));
+    if (width * height > IMAGE_MAX_PIXELS) throw new Error(apiText("imagePixelLimit"));
 }
 
 function resolveRequestSize(quality: string | undefined, size: string) {
@@ -197,8 +194,11 @@ function resolveRequestSize(quality: string | undefined, size: string) {
     if (!value || value.toLowerCase() === "auto") return undefined;
     const dimensions = parseImageDimensions(value);
     if (dimensions) {
-        validateImageSize(dimensions.width, dimensions.height);
-        return `${dimensions.width}x${dimensions.height}`;
+        // Round non-step sizes up to the 16-step instead of rejecting.
+        const width = Math.ceil(dimensions.width / IMAGE_SIZE_STEP) * IMAGE_SIZE_STEP;
+        const height = Math.ceil(dimensions.height / IMAGE_SIZE_STEP) * IMAGE_SIZE_STEP;
+        validateImageSize(width, height);
+        return `${width}x${height}`;
     }
     if (value.includes(":")) return resolveSize(quality, value);
     throw new Error(apiText("invalidImageSizeFormat"));

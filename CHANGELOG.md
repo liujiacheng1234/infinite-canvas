@@ -4,6 +4,8 @@
 
 本段记录本 fork 独立演进后的全部改动，最早一条为「移除未使用的 `@ant-design/pro-components` 依赖」；上游的未发布条目与历史版本记录在本段之后，仅作参考。
 
++ [调整] 生图尺寸校验放宽：移除像素总数下限（原 655,360 px 以下直接报错，低像素尺寸——如 9:20 的 464x1024——现在可正常提交，便于按渠道 1K 计费档出图）；自定义尺寸非 16 倍数时改为向上取整到 16 的倍数（原先直接报错），避免因舍入规则被拒。
+
 + [修复] Gemini 生图/编辑的尺寸比例配置改按官方规范放在 generationConfig.imageConfig（字符串型 aspectRatio/imageSize，如 16:9、2K），原 responseFormat.image 的枚举字段无法接受字符串值，导致设置尺寸后请求报错或配置不生效。
 + [修复] 多张参考图编辑按 OpenAI 规范以重复 `image[]` 字段提交（单张仍为 `image`），避免严格兼容接口拒绝重复的 `image` 字段。
 + [修复] OpenAI 图片协议生成/编辑参数按官方规范收敛：n 上限从 15 调整为 10，gpt-image 模型 quality 为 standard/hd 时分别映射为 low/medium，output_format 仅对 gpt-image 模型发送；自定义尺寸保持原样发送不变。
