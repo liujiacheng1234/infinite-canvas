@@ -7,7 +7,6 @@ export type AgentCanvasContext = { snapshot: CanvasAgentSnapshot; applyOps: (ops
 
 type AgentStore = {
     url: string;
-    token: string;
     connected: boolean;
     enabled: boolean;
     silentConnect: boolean;
@@ -23,7 +22,6 @@ type AgentStore = {
 /** 本地 Canvas Agent 连接状态；工具执行由 use-agent-connection 负责。 */
 export const useAgentStore = create<AgentStore>((set, get) => ({
     url: typeof window === "undefined" ? "http://127.0.0.1:17371" : localStorage.getItem("canvas-agent-url") || "http://127.0.0.1:17371",
-    token: typeof window === "undefined" ? "" : localStorage.getItem("canvas-agent-token") || "",
     connected: false,
     enabled: false,
     silentConnect: false,
@@ -34,8 +32,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     connectAgent: (options) => {
         const silent = options?.silent ?? false;
         const endpoint = get().url.trim().replace(/\/$/, "");
-        const token = get().token.trim();
-        if (!endpoint || !token) return set({ connectError: silent ? "" : i18n.t("agent.state.connectionRequired") });
+        if (!endpoint) return set({ connectError: silent ? "" : i18n.t("agent.state.connectionRequired") });
         try {
             const parsed = new URL(endpoint);
             if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
@@ -43,9 +40,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
             return set({ connectError: silent ? "" : i18n.t("agent.state.invalidUrl") });
         }
         localStorage.setItem("canvas-agent-url", endpoint);
-        localStorage.setItem("canvas-agent-token", token);
         // Only set enabled here; use-agent-connection owns SSE initialization.
-        set({ url: endpoint, token, enabled: true, silentConnect: silent, activity: i18n.t("agent.status.connecting"), connectError: "" });
+        set({ url: endpoint, enabled: true, silentConnect: silent, activity: i18n.t("agent.status.connecting"), connectError: "" });
     },
     disconnectAgent: (patch = {}) => {
         set({ enabled: false, connected: false, silentConnect: false, activity: i18n.t("agent.state.offline"), ...patch });

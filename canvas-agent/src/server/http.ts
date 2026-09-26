@@ -1,4 +1,4 @@
-import { loadConfig, saveConfig, DEFAULT_PORT, type CanvasAgentConfig } from "../config.js";
+import { acquireInstanceLock, loadConfig, saveConfig, DEFAULT_PORT, type CanvasAgentConfig } from "../config.js";
 import { logger } from "../utils/logger.js";
 import { AGENT_PROTOCOL_VERSION, CanvasSession } from "../canvas/session.js";
 import type { NextFunction, Request, Response } from "express";
@@ -7,6 +7,10 @@ import express from "express";
 /** 启动仅监听本机的 Canvas Agent HTTP 服务，为 MCP 与网页画布提供转发通道。 */
 export function startHttpServer() {
     const config = loadConfig(true);
+    if (!acquireInstanceLock()) {
+        console.error("Canvas Agent already running, exit.");
+        process.exit(0);
+    }
     const port = Number(process.env.PORT) || Number(new URL(config.url).port) || DEFAULT_PORT;
     config.url = `http://127.0.0.1:${port}`;
     saveConfig(config);
@@ -32,11 +36,7 @@ export function startHttpServer() {
         next();
     });
     app.get("/health", (_req, res) => res.json(session.health()));
-    app.get("/config", (_req, res) => res.json({ ok: true, protocolVersion: AGENT_PROTOCOL_VERSION, url: config.url, hasToken: true }));
-    app.use((req, res, next) => {
-        if (validToken(req, requestUrl(req, config), config.token)) return next();
-        res.status(401).json({ ok: false, error: "invalid token" });
-    });
+    app.get("/config", (_req, res) => res.json({ ok: true, protocolVersion: AGENT_PROTOCOL_VERSION, url: config.url }));
     app.get("/events", (req, res) => {
         session.openEvents(requestUrl(req, config), res);
     });
@@ -62,9 +62,12 @@ export function startHttpServer() {
     app.listen(port, "127.0.0.1", () => {
         console.log("Infinite Canvas Agent");
         console.log(`Local URL: ${config.url}`);
-        console.log(`Connect token: ${config.token}`);
         if (logger.enabled) console.log(`Debug log: ${logger.filePath}`);
         logger.info("Canvas Agent started", { url: config.url, debugLog: logger.filePath });
+    }).on("error", (error: NodeJS.ErrnoException) => {
+        // 端口已被占用（多为 MCP 模式并发拉起时已有实例在跑）时静默退出。
+        if (error.code === "EADDRINUSE") process.exit(0);
+        throw error;
     });
 }
 
@@ -78,25 +81,19 @@ function requestUrl(req: Request, config: CanvasAgentConfig) {
     return new URL(req.originalUrl || req.url || "/", config.url);
 }
 
-/** 设置跨域响应头并记录通过 token 授权的来源。 */
+/** 设置跨域响应头并记录首次连接的网页来源；本机服务不再使用 token，访问范围靠 Origin 允许列表约束。 */
 function setCors(req: Request, res: Response, url: URL, config: CanvasAgentConfig) {
     const origin = req.headers.origin;
     res.setHeader("Access-Control-Allow-Origin", origin || "*");
-    res.setHeader("Access-Control-Allow-Headers", "content-type,x-canvas-agent-token");
+    res.setHeader("Access-Control-Allow-Headers", "content-type");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     res.setHeader("Access-Control-Allow-Private-Network", "true");
+    res.setHeader("Vary", "Origin");
     if (!origin || req.method === "OPTIONS" || url.pathname === "/health" || url.pathname === "/config") return true;
     config.origins ||= [];
-    if (validToken(req, url, config.token) && !config.origins.includes(origin)) {
+    if (!config.origins.includes(origin)) {
         config.origins.push(origin);
         saveConfig(config);
     }
-    res.setHeader("Vary", "Origin");
-    return config.origins.includes(origin);
-}
-
-/** 校验请求查询参数或请求头中的连接 token。 */
-function validToken(req: Request, url: URL, token: string) {
-    const header = req.headers["x-canvas-agent-token"];
-    return url.searchParams.get("token") === token || header === token || (Array.isArray(header) && header.includes(token));
+    return true;
 }

@@ -12,14 +12,14 @@ import { activateAgentClient, postState, postToolResult } from "@/services/api/c
 import { useAgentStore, type AgentCanvasContext } from "@/stores/use-agent-store";
 
 /** 与 canvas-agent AGENT_PROTOCOL_VERSION 保持一致。 */
-const AGENT_PROTOCOL_VERSION = 7;
+const AGENT_PROTOCOL_VERSION = 8;
 
 type AgentHelloEvent = { ok?: boolean; protocolVersion?: number; clientId?: string };
 type AgentToolCallEvent = { requestId: string; name: string; input?: { ops?: CanvasAgentOp[]; path?: string } & Record<string, unknown> };
 
 /**
  * 全局本地 Agent 连接：建立 SSE、上报画布快照、执行 Agent 工具调用并回传结果。
- * 只要 localStorage 中保存过地址和 token，应用启动后就会自动静默连接。
+ * 只要 localStorage 中保存过地址，应用启动后就会自动静默连接。
  */
 export function useAgentConnection() {
     const navigate = useNavigate();
@@ -30,10 +30,9 @@ export function useAgentConnection() {
     const enabled = useAgentStore((state) => state.enabled);
     const connected = useAgentStore((state) => state.connected);
     const url = useAgentStore((state) => state.url);
-    const token = useAgentStore((state) => state.token);
     const endpoint = url.trim().replace(/\/$/, "");
 
-    // 挂载时恢复标签页身份；支持 #agentUrl=&agentToken= 引导参数，并在已有配置时自动静默连接。
+    // 挂载时恢复标签页身份；支持 #agentUrl= 引导参数，并在已有配置时自动静默连接。
     useEffect(() => {
         let disposed = false;
         void acquireAgentClientId().then((clientId) => {
@@ -43,13 +42,11 @@ export function useAgentConnection() {
             const bootstrap = readAgentUrlBootstrap(window.location.hash);
             if (bootstrap) {
                 window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${bootstrap.remainingHash || ""}`);
-                const url = bootstrap.url || state.url;
-                const token = bootstrap.token || state.token;
-                state.setAgentState({ url, token });
-                if (url && token) state.connectAgent({ silent: true });
+                state.setAgentState({ url: bootstrap.url || state.url });
+                state.connectAgent({ silent: true });
                 return;
             }
-            if (!state.enabled && state.url && state.token) state.connectAgent({ silent: true });
+            if (!state.enabled && state.url) state.connectAgent({ silent: true });
         });
         return () => {
             disposed = true;
@@ -64,20 +61,20 @@ export function useAgentConnection() {
             canvasContextRef.current = state.canvasContext;
             if (!useAgentStore.getState().connected) return;
             if (timer) clearTimeout(timer);
-            timer = setTimeout(() => void postState(endpoint, token, clientIdRef.current, canvasContextRef.current?.snapshot || null), 300);
+            timer = setTimeout(() => void postState(endpoint, clientIdRef.current, canvasContextRef.current?.snapshot || null), 300);
         });
         return () => {
             unsubscribe();
             if (timer) clearTimeout(timer);
         };
-    }, [endpoint, token]);
+    }, [endpoint]);
 
     useEffect(() => {
-        if (!enabled || !clientIdRef.current || !token.trim()) return;
+        if (!enabled || !clientIdRef.current) return;
         const clientId = clientIdRef.current;
         const rt = (key: string, options?: Record<string, unknown>) => t(`agent.runtime.${key}`, options);
         let disposed = false;
-        const source = new EventSource(`${endpoint}/events?token=${encodeURIComponent(token)}&clientId=${encodeURIComponent(clientId)}`);
+        const source = new EventSource(`${endpoint}/events?clientId=${encodeURIComponent(clientId)}`);
         source.addEventListener("hello", (event) => {
             if (disposed) return;
             const hello = parseEventData<AgentHelloEvent>(event);
@@ -89,13 +86,13 @@ export function useAgentConnection() {
             }
             connectedRef.current = true;
             useAgentStore.getState().setAgentState({ connected: true, activity: i18n.t("agent.status.connected"), connectError: "", silentConnect: false });
-            void postState(endpoint, token, clientId, canvasContextRef.current?.snapshot || null);
-            if (document.visibilityState === "visible" && document.hasFocus()) void activateAgentClient(endpoint, token, clientId);
+            void postState(endpoint, clientId, canvasContextRef.current?.snapshot || null);
+            if (document.visibilityState === "visible" && document.hasFocus()) void activateAgentClient(endpoint, clientId);
         });
         source.addEventListener("tool_call", (event) => {
             if (disposed) return;
             const data = parseEventData<AgentToolCallEvent>(event);
-            if (data) void handleToolCall(endpoint, token, clientId, navigate, data);
+            if (data) void handleToolCall(endpoint, clientId, navigate, data);
         });
         source.onerror = () => {
             if (disposed) return;
@@ -108,10 +105,17 @@ export function useAgentConnection() {
                 connectError: silent ? "" : rt(wasConnected ? "connectionLostDescription" : "connectionFailedDescription"),
                 silentConnect: false,
             });
-            // Never-connected sessions stop here; EventSource keeps retrying after a working connection drops.
+            // Silent auto-start sessions retry quietly so the page reconnects once canvas-agent becomes available;
+            // explicit manual connections stop here so invalid-token errors stay visible.
             if (!wasConnected) {
                 source.close();
                 useAgentStore.getState().setAgentState({ enabled: false });
+                if (silent && !disposed) {
+                    setTimeout(() => {
+                        const state = useAgentStore.getState();
+                        if (!disposed && !state.connected && !state.enabled) state.connectAgent({ silent: true });
+                    }, 5000);
+                }
             }
         };
         return () => {
@@ -119,12 +123,12 @@ export function useAgentConnection() {
             source.close();
             connectedRef.current = false;
         };
-    }, [enabled, endpoint, token, navigate, t]);
+    }, [enabled, endpoint, navigate, t]);
 
     // 页面获得焦点时把当前标签页设为工具目标。
     useEffect(() => {
         if (!connected) return;
-        const activate = () => void activateAgentClient(endpoint, token, clientIdRef.current);
+        const activate = () => void activateAgentClient(endpoint, clientIdRef.current);
         const activateVisible = () => {
             if (document.visibilityState === "visible") activate();
         };
@@ -134,16 +138,16 @@ export function useAgentConnection() {
             window.removeEventListener("focus", activate);
             document.removeEventListener("visibilitychange", activateVisible);
         };
-    }, [connected, endpoint, token]);
+    }, [connected, endpoint]);
 }
 
 /** 执行 Agent 工具调用并把结果回传给本地服务。 */
-async function handleToolCall(endpoint: string, token: string, clientId: string, navigate: ReturnType<typeof useNavigate>, payload: AgentToolCallEvent) {
+async function handleToolCall(endpoint: string, clientId: string, navigate: ReturnType<typeof useNavigate>, payload: AgentToolCallEvent) {
     const rt = (key: string, options?: Record<string, unknown>) => i18n.t(`agent.runtime.${key}`, options);
     try {
         if (isSiteTool(payload.name)) {
             const result = await runSiteTool(payload.name, payload.input || {}, navigate, { canvasSnapshot: useAgentStore.getState().canvasContext?.snapshot || null });
-            await postToolResult(endpoint, token, clientId, { requestId: payload.requestId, result });
+            await postToolResult(endpoint, clientId, { requestId: payload.requestId, result });
             return;
         }
         const input: { ops?: CanvasAgentOp[]; path?: string } = payload.input || {};
@@ -157,7 +161,7 @@ async function handleToolCall(endpoint: string, token: string, clientId: string,
             if (!context) throw new Error(rt("openCanvasFirst"));
             const { snapshot, receipt } = context.applyOpsWithReceipt(input.ops || []);
             result = { ok: receipt.opResults.every((item) => item.ok), ...receipt, nodeCount: snapshot.nodes.length, connectionCount: snapshot.connections.length, selectedNodeIds: snapshot.selectedNodeIds, hint: rt("opsReceiptHint") };
-            void postState(endpoint, token, clientId, snapshot);
+            void postState(endpoint, clientId, snapshot);
         } else if (payload.name === "canvas_read_image") {
             const snapshot = useAgentStore.getState().canvasContext?.snapshot;
             if (!snapshot) throw new Error(rt("openCanvasFirst"));
@@ -165,10 +169,10 @@ async function handleToolCall(endpoint: string, token: string, clientId: string,
         } else {
             result = { ok: false, error: rt("unknownCanvasTool", { name: payload.name }) };
         }
-        await postToolResult(endpoint, token, clientId, { requestId: payload.requestId, result });
+        await postToolResult(endpoint, clientId, { requestId: payload.requestId, result });
     } catch (error) {
         const message = error instanceof Error ? error.message : rt("canvasOperationFailed");
-        await postToolResult(endpoint, token, clientId, { requestId: payload.requestId, error: message }).catch(() => undefined);
+        await postToolResult(endpoint, clientId, { requestId: payload.requestId, error: message }).catch(() => undefined);
     }
 }
 

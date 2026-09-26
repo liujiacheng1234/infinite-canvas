@@ -11,14 +11,15 @@ npm run build
 node dist/index.js
 ```
 
-启动后输出本机地址和 token：
+启动后输出本机地址：
 
 ```txt
 Local URL: http://127.0.0.1:17371
-Connect token: xxxxxx
 ```
 
-浏览器打开无限画布网页后会自动连接本地 Agent（首次连接的地址和 token 由网页保存），也可以通过 URL 参数 `#agentUrl=...&agentToken=...` 引导连接。
+浏览器打开无限画布网页后会自动连接本地 Agent（连接地址由网页保存，默认 `http://127.0.0.1:17371`），也可以通过 URL 参数 `#agentUrl=...` 引导连接。
+
+日常使用无需手动保持这个终端：MCP 客户端启动 `canvas-agent mcp` 时，若本地服务未运行，会自动以独立后台进程拉起并等待就绪；MCP 客户端退出后后台服务继续运行，网页画布保持连接。停止后台服务可在任务管理器结束对应的 node 进程。
 
 需要排查连接或工具调用问题时，可开启 Debug 模式：
 
@@ -26,7 +27,7 @@ Connect token: xxxxxx
 node dist/index.js --debug
 ```
 
-Debug 日志会以 `[DEBUG][HH:mm:ss]` 等格式输出到终端，并按启动日期保存到 `~/.infinite-canvas/logs/canvas-agent-YYYY-MM-DD.log`；日志中的 token 与图片 Data URL 会自动隐藏。
+Debug 日志会以 `[DEBUG][HH:mm:ss]` 等格式输出到终端，并按启动日期保存到 `~/.infinite-canvas/logs/canvas-agent-YYYY-MM-DD.log`；日志中的图片 Data URL 会自动隐藏。
 
 ## 注册 MCP
 
@@ -38,8 +39,9 @@ Debug 日志会以 `[DEBUG][HH:mm:ss]` 等格式输出到终端，并按启动�
 
 ## 安全
 
-- Canvas Agent 默认只监听 `127.0.0.1`。
-- 网页第一次带正确 token 连接后，Canvas Agent 会记录该网页 Origin；之后其他 Origin 不能复用这个本地 Agent，除非清理 `~/.infinite-canvas/canvas-agent.json` 里的 `origins`。
+- 不使用连接 token：本地服务默认只监听 `127.0.0.1`，仅接受本机访问。
+- 网页首次连接后，Canvas Agent 会记录该网页 Origin 并写入允许列表；之后其他 Origin 不能复用这个本地 Agent，除非清理 `~/.infinite-canvas/canvas-agent.json` 里的 `origins`。
+- 服务用锁文件保证单实例（`~/.infinite-canvas/canvas-agent.json.lock`）；锁残留但原进程已退出时会自动清理。
 
 ## Skills 提示词文档
 

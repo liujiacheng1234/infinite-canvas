@@ -1,15 +1,12 @@
 export function hasAgentUrlBootstrap(hash: string) {
-    const params = new URLSearchParams(hash.replace(/^#/, ""));
-    return params.has("agentUrl") || params.has("agentToken");
+    return new URLSearchParams(hash.replace(/^#/, "")).has("agentUrl");
 }
 
 export function readAgentUrlBootstrap(hash: string) {
     const params = new URLSearchParams(hash.replace(/^#/, ""));
-    if (!params.has("agentUrl") && !params.has("agentToken")) return null;
+    if (!params.has("agentUrl")) return null;
     const url = params.get("agentUrl")?.trim() || "";
-    const token = params.get("agentToken")?.trim() || "";
     params.delete("agentUrl");
-    params.delete("agentToken");
     const remaining = params.toString();
-    return { url, token, remainingHash: remaining ? `#${remaining}` : "" };
+    return { url, remainingHash: remaining ? `#${remaining}` : "" };
 }

@@ -39,13 +39,13 @@
 
 | 维度 | 上游 main | 本 fork |
 |---|---|---|
-| Agent 接入 | 内置 Codex app-server 运行时和右侧对话面板，重、绑定单一客户端，界面被对话 UI 占据 | **纯 MCP 桥接**：拆掉全部内置运行时，任何 MCP 客户端（Codex CLI / Claude Code / pi…）平等接入；网页回到纯画布，连接全自动（启动即连、URL 引导、配置页与顶栏随时改） |
+| Agent 接入 | 内置 Codex app-server 运行时和右侧对话面板，重、绑定单一客户端，界面被对话 UI 占据 | **纯 MCP 桥接**：拆掉全部内置运行时，任何 MCP 客户端（Codex CLI / Claude Code / pi…）平等接入；网页回到纯画布，连接全自动（启动即连、无需 token、MCP 拉起即自动后台运行） |
 | Agent 读画布 | 概览一次性返回大 JSON，节点 id 为长 UUID，无法看图、读不到全文 | **分层读取**：表头行概览 + 稳定短引用（150 节点概览再省约 1K token）；`canvas_get_nodes` 按需读全文和上下游邻居，`canvas_read_image` 直接看图 |
 | Agent 写画布 | 返回全量快照，写失败要靠重读才发现 | **逐条执行回执**：每个 op 的成功/失败/原因、新建节点 id、被断开的连线一次返回，失败立即修正，不用猜 |
 | 画布性能 | 状态变更全量广播，拖拽/缩放帧内重渲染所有可见节点 | **world store 分片订阅**：拖拽、缩放零节点重渲染，连线 memo 化、滚轮 rAF 节流、小地图延迟渲染，大画布依然顺滑 |
 | 依赖健康度 | 捆绑 `@openai/codex` 运行时，`@ant-design/pro-components` 触发 antd 6 peer 冲突导致 npm install 失败 | 移除全部对话运行时依赖，npm install 一次通过 |
 
-逐项变更记录见 [CHANGELOG](CHANGELOG.md) 的 `Unreleased` 段落，最早一条为「移除未使用的 `@ant-design/pro-components` 依赖」；该段落之后的「上游遗留」与历史版本条目来自原项目，仅作参考。
+逐项变更记录见 [CHANGELOG](CHANGELOG.md) 的 `v0.17.0` 段落；更早的 fork 演进条目与上游历史记录也一并保留在该文件中。
 
 ## 快速开始
 
@@ -72,22 +72,21 @@ docker compose up -d
 
 ### 连接 MCP 客户端
 
-1. 构建并启动本地 Agent：
+1. 在 MCP 客户端中注册 `infinite-canvas` MCP（无需手动启动任何服务）：
+
+```bash
+<client> mcp add infinite-canvas -- node /path/to/infinite-canvas/canvas-agent/dist/index.js mcp
+```
+
+首次使用前先构建一次 Agent：
 
 ```bash
 cd canvas-agent
 npm install
 npm run build
-node dist/index.js
 ```
 
-2. 打开画布网页，在配置页「本地 Agent 连接」或画布顶栏状态点中填入 `Local URL` 和 `Connect Token`（也可以用 `#agentUrl=<Local URL>&agentToken=<Connect token>` 打开网页自动连接）。
-
-3. 在 MCP 客户端中注册 `infinite-canvas` MCP：
-
-```bash
-<client> mcp add infinite-canvas -- node /path/to/infinite-canvas/canvas-agent/dist/index.js mcp
-```
+2. 打开画布网页即可：网页默认自动连接 `http://127.0.0.1:17371`，本地 Agent 不使用 token；MCP 客户端启动时若本地服务未运行，会自动在后台拉起并保持运行，无需保持终端开启。也可以用 `#agentUrl=<Agent 地址>` 打开网页引导连接，或在配置页「本地 Agent 连接」中修改地址。
 
 之后 MCP 客户端即可读取和操作浏览器中打开的画布。详见 [Canvas Agent](canvas-agent/README.md)。
 

@@ -5,10 +5,14 @@ description: 当前版本已实现但仍需人工验证的变更项
 
 # 待测试
 
+- 移除连接 token：清空浏览器 localStorage（或换无痕窗口）后打开画布网页，应无需填写 token 即自动连上本地 Agent；连接表单只保留 Agent 地址输入；带 `#agentUrl=<地址>` 打开网页应自动保存地址并连接；本机其他 Origin 的网页首次连接会被自动记入 `~/.infinite-canvas/canvas-agent.json` 的 origins 允许列表。
+- Canvas Agent 自动拉起：关闭所有 canvas-agent 终端后，直接让 MCP 客户端调用任意 infinite-canvas 工具，应自动在后台拉起本地服务并正常返回；MCP 客户端退出后后台服务继续运行，网页保持连接；再次直接运行 canvas-agent 应打印 "Canvas Agent already running, exit." 并退出；杀掉后台进程后重新启动应自动清理残留锁文件并正常运行。
+- 网页自动重连：本地服务未运行时打开网页应显示未连接；随后启动 canvas-agent（或由 MCP 客户端自动拉起）后，页面应在约 5 秒内自动恢复连接，无需刷新或手动点连接；手动连接填错地址时仍应显示错误提示且不无限重试。
+- 子路径部署：在 `web/` 用 `VITE_BASE=/canvas/` 构建并部署到 nginx 的 `/canvas/` 子路径后，首页、各页面路由、直链刷新及静态资源（JS/CSS、favicon、config.js、插件清单、模型图标）均应正常加载；不设置 VITE_BASE 构建时应保持根路径不变，`npm run dev` 开发模式不受影响。
 - Gemini 生图配置字段：设置尺寸/比例时请求体应携带 generationConfig.imageConfig.aspectRatio/imageSize（官方字符串格式，如 16:9、2K），不再使用 responseFormat.image；14 种比例（含 1:4、1:8、4:1、8:1）与 512/1K/2K/4K 档位均保留，生图与图片编辑均应按设置的比例和尺寸出图。
 - 图片接口规范对齐：多张参考图编辑改按 OpenAI 规范以重复 `image[]` 字段提交，单张参考图仍为 `image`，蒙版仍为 `mask`，严格兼容接口下多图编辑不再丢图或报错；OpenAI 图片协议生成与编辑的 n 上限从 15 收敛为 10（超出按 10 截断）；gpt-image 模型 quality 为 standard/hd 时分别按 low/medium 发送，非 gpt-image 模型不再发送 output_format；自定义尺寸（如 9:20 等比例）仍按原样发送，行为不变。
-- 本地 Agent 连接 UI：配置页新增「本地 Agent 连接」卡片，可填写地址与 token、连接或断开并实时查看状态；画布顶栏的状态点可点击展开同一连接表单，无需离开画布页即可修改连接；恢复 `skills/` 目录的 canvas、open-canvas 两份 skill 文档，内容与仅保留 MCP 后的现状对齐。
-- 移除内置 Codex：canvas-agent 仅保留 MCP 桥接（HTTP 服务 + stdio MCP）；网页端移除右侧对话面板，已保存过本地 Agent 地址和 token 时启动后自动静默连接，MCP 客户端仍可跨标签页读取和操作当前画布；`canvas_create_attachment_nodes` 工具、内置 Codex/Claude 适配器、Skills 存储与 Codex 插件相关文档均已删除。
+- 本地 Agent 连接 UI：配置页新增「本地 Agent 连接」卡片，可填写地址、连接或断开并实时查看状态；画布顶栏的状态点可点击展开同一连接表单，无需离开画布页即可修改连接；恢复 `skills/` 目录的 canvas、open-canvas 两份 skill 文档，内容与仅保留 MCP 后的现状对齐。
+- 移除内置 Codex：canvas-agent 仅保留 MCP 桥接（HTTP 服务 + stdio MCP）；网页端移除右侧对话面板，已保存过本地 Agent 地址时启动后自动静默连接，MCP 客户端仍可跨标签页读取和操作当前画布；`canvas_create_attachment_nodes` 工具、内置 Codex/Claude 适配器、Skills 存储与 Codex 插件相关文档均已删除。
 - 文档站导航与本页目录：手机宽度打开文档侧边栏时，顶部应显示当前文档分类及说明；展开后可在项目介绍、操作手册、开发文档、项目进度、商务合作和赞助支持之间切换，切换后分类标题及下方页面列表应同步更新；桌面端顶部分类栏保持不变，宽度达到 960px 时正文右侧应显示带层级折线的本页标题目录，点击可跳转，滚动时自动高亮当前标题；较窄宽度继续显示顶部折叠目录。
 - Canvas Agent 生成流程引用：提示词仅包含已经通过 `referenceNodeIds` 传入的 `@[node:...]` 引用时，应直接把现有文本、图片、视频、音频或组节点连接到生成配置节点，不再创建重复的提示词文本节点；提示词包含普通文字时仍应创建独立的提示词文本节点。
 - 视频画面截取：右键有内容的视频节点应显示「截取首帧」「截取尾帧」「截取当前帧」；三项操作应按视频原始比例在右侧生成并选中图片节点，同时建立视频到图片的连线；「截取当前帧」应使用播放器此刻停留的画面，截取过程不得改变原视频的播放位置。
@@ -39,10 +43,10 @@ description: 当前版本已实现但仍需人工验证的变更项
 - Agent Markdown 样式：右侧 Agent 回复中的代码块应为横向占满消息区域、无语言标题和无双层边框的紧凑代码条，单行内容不应保留纵向大面积空白，复制操作仅在悬停时弱化显示；行内代码、链接在浅色和深色主题下应清晰；点击外部链接后应显示中文紧凑确认弹窗，长路径能够正常换行且复制、继续打开和关闭操作可用；点击 `/Users/`、`/home/` 等本地绝对文件路径时应改为提示在系统文件管理器中定位，支持复制路径，且浏览器地址不应跳转为 localhost 文件路径。
 - Agent 工具确认模式：右侧面板标题栏不应再显示「工具确认」开关；对话输入框左下方应显示确认模式选择，默认选中「自动确认」，画布写入工具应直接执行；切换为「手动确认」后，画布写入工具应在对话中展示等待确认卡片，并支持批准或拒绝。
 - Canvas Agent Codex 升级：启动 Canvas Agent 后应输出 Canvas Agent、内置 Codex 和本机 Codex 版本，实际运行的内置 Codex 应为 0.146.0；内置与本机版本不一致、未安装本机 Codex，或 npm 存在更新版本时应显示对应升级提醒，npm 检查失败不应阻止服务启动；Agent 应能正常连接 Codex、创建或恢复会话、发送消息并调用画布工具，运行中停止任务应只中断当前 turn，随后无需重启 Agent 即可继续发送新任务。
-- Canvas Agent Debug：普通启动应通过公共 logger 输出 Info、Warn 和 Error 日志；使用 `npx -y @basketikun/canvas-agent --debug` 启动后还应输出 Debug 日志并显示日志文件路径，终端统一采用“`YYYY-MM-DD HH:mm:ss` 级别 消息 详情”的纯文本单行格式，`~/.infinite-canvas/logs/` 下应按启动日期生成相同格式的 `canvas-agent-YYYY-MM-DD.log`，同一天多次启动应追加到同一文件；日志中不应出现连接 token 或图片 Data URL 原文。
+- Canvas Agent Debug：普通启动应通过公共 logger 输出 Info、Warn 和 Error 日志；使用 `npx -y @basketikun/canvas-agent --debug` 启动后还应输出 Debug 日志并显示日志文件路径，终端统一采用“`YYYY-MM-DD HH:mm:ss` 级别 消息 详情”的纯文本单行格式，`~/.infinite-canvas/logs/` 下应按启动日期生成相同格式的 `canvas-agent-YYYY-MM-DD.log`，同一天多次启动应追加到同一文件；日志中不应出现图片 Data URL 原文。
 - Canvas Agent 凭据脱敏：Codex 与 Claude CLI 的 stderr 包含 Bearer token、`sk-` 密钥、显式 API key/token/authorization 赋值、ANSI 样式或跨输出分片的凭据时，调试日志和网页诊断事件均不应出现明文；普通 stderr 文本应保持不变。
 - Canvas Agent 配置权限：在 Linux 和 macOS 上保存配置后，`~/.infinite-canvas` 权限应为 `0700`，`canvas-agent.json` 权限应为 `0600`，已有的宽松权限也应被纠正；配置应能继续正常读写，Windows 启动不受影响。
-- Canvas Agent URL 自动连接：链接应在 `#` 后传递 `agentUrl` 和 `agentToken`，进入或选择具体画布时继续保留，读取后立即从地址栏移除，并可连接有效的本机、局域网或远程 HTTP(S) Agent 地址且不主动展开设置面板；缺少参数或地址无效时应展开设置并显示错误。
+- Canvas Agent URL 自动连接：链接应在 `#` 后传递 `agentUrl`，进入或选择具体画布时继续保留，读取后立即从地址栏移除，并可连接有效的本机、局域网或远程 HTTP(S) Agent 地址且不主动展开设置面板；缺少参数或地址无效时应展开设置并显示错误。
 - 图片 API 模型参数：`gpt-image-*` 的生成和编辑请求不应发送 `response_format`，`dall-e-*` 请求仍应发送 `response_format: "b64_json"`。
 - 图片外链持久化：画布和生图工作台对图片接口返回的远程 URL 应只下载一次，经图片解码校验后保存到 IndexedDB；返回 `200` 但内容不是图片时应失败，下载期间停止画布生成后不得保存或应用结果；浏览器因 CORS 无法读取但图片仍可显示时，应保留原 URL 且不生成空 `storageKey`，插件调用在外链可读取时仍应收到 Data URL。
 - Canvas Agent Codex 日志：Codex app-server 输出带颜色或样式控制符及 UTC 时间的 stderr 时，本地日志和网页诊断日志应只显示一份 `YYYY-MM-DD HH:mm:ss` 本地时间和干净文本，不应出现重复 ISO 时间或 `[2m`、`[31m` 等 ANSI 转义内容。

@@ -7,6 +7,11 @@ description: Implemented changes that still need manual verification
 
 The current release needs manual verification in these areas:
 
+- 移除连接 token：清空浏览器 localStorage（或换无痕窗口）后打开画布网页，应无需填写 token 即自动连上本地 Agent；连接表单只保留 Agent 地址输入；带 `#agentUrl=<地址>` 打开网页应自动保存地址并连接；本机其他 Origin 的网页首次连接会被自动记入 `~/.infinite-canvas/canvas-agent.json` 的 origins 允许列表。
+- Canvas Agent 自动拉起：关闭所有 canvas-agent 终端后，直接让 MCP 客户端调用任意 infinite-canvas 工具，应自动在后台拉起本地服务并正常返回；MCP 客户端退出后后台服务继续运行，网页保持连接；再次直接运行 canvas-agent 应打印 "Canvas Agent already running, exit." 并退出；杀掉后台进程后重新启动应自动清理残留锁文件并正常运行。
+- 网页自动重连：本地服务未运行时打开网页应显示未连接；随后启动 canvas-agent（或由 MCP 客户端自动拉起）后，页面应在约 5 秒内自动恢复连接，无需刷新或手动点连接；手动连接填错地址时仍应显示错误提示且不无限重试。
+- 子路径部署：在 `web/` 用 `VITE_BASE=/canvas/` 构建并部署到 nginx 的 `/canvas/` 子路径后，首页、各页面路由、直链刷新及静态资源（JS/CSS、favicon、config.js、插件清单、模型图标）均应正常加载；不设置 VITE_BASE 构建时应保持根路径不变，`npm run dev` 开发模式不受影响。
+- 生图请求超时兑底：图片生成/编辑（/images/generations、/images/edits）及 Gemini 生图请求增加 5 分钟超时，超时后节点停止转圈并提示「请求超时，请检查网络后重试」，可直接重试；中转站返回 url 图片时的下载超时从 10 分钟降为 2 分钟。验收：正常生图不受影响；模拟中转站挂起（上游完成但响应不回传）或断网时，最多 5 分钟后应看到超时错误而不是无限转圈。
 - Gemini image config: when a size/ratio is set, requests should carry generationConfig.imageConfig.aspectRatio/imageSize (official string format like 16:9, 2K) instead of responseFormat.image; all 14 ratios (including 1:4, 1:8, 4:1, 8:1) and the 512/1K/2K/4K sizes are kept, and both generation and editing should honor the configured ratio and size.
 - Image API conformance: multi-reference editing now submits repeated `image[]` fields per the OpenAI spec (single reference keeps `image`, mask stays `mask`), so strict OpenAI-compatible endpoints no longer drop or reject multiple reference images; the n cap for OpenAI-format generation/editing is lowered from 15 to 10 (values above are clamped); gpt-image models send standard/hd quality as low/medium, and non-gpt-image models no longer send output_format; custom sizes (e.g. 9:20 ratios) are still sent as-is.
 - MCP connection UI: the config page gains a Local Agent connection card for entering the URL and token, connecting or disconnecting, and watching the live status; the canvas top bar status dot opens a popover with the same form so the connection can be edited without leaving the canvas; the `skills/canvas` and `skills/open-canvas` documents are restored and aligned with the MCP-only behavior.

@@ -7,6 +7,7 @@ import { defineConfig, type Plugin } from "vite";
 import { parseChangelog } from "./src/lib/release";
 
 const webDir = dirname(fileURLToPath(import.meta.url));
+const base = process.env.VITE_BASE || "/";
 const localVersion = readFileSync(resolve(webDir, "../VERSION"), "utf8").trim() || "dev";
 const localChangelog = readFileSync(resolve(webDir, "../CHANGELOG.md"), "utf8");
 
@@ -19,7 +20,7 @@ function localPluginsManifest(): Plugin {
             return readdirSync(pluginsDir)
                 .filter((file) => file.endsWith(".js"))
                 .sort()
-                .map((file) => `/plugins/${file}`);
+                .map((file) => `${base}plugins/${file}`);
         } catch {
             return [];
         }
@@ -39,7 +40,7 @@ function localPluginsManifest(): Plugin {
 }
 
 export default defineConfig({
-    base: process.env.VITE_BASE || "/",
+    base,
     plugins: [react(), localPluginsManifest()],
     resolve: {
         alias: {

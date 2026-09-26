@@ -156,7 +156,7 @@ test("hello 事件返回协议版本和客户端 id", () => {
     client.close();
 
     const hello = client.event("hello");
-    assert.equal(field(hello, "protocolVersion"), 7);
+    assert.equal(field(hello, "protocolVersion"), 8);
     assert.equal(field(hello, "clientId"), "first");
 });
 

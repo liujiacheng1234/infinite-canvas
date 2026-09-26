@@ -18,12 +18,10 @@ npm run build
 node dist/index.js
 ```
 
-2. 从启动输出取得 `Local URL` 和 `Connect token`。
-
-3. 在浏览器打开你自己部署的画布站点：
+2. 在浏览器打开你自己部署的画布站点：
 
 ```text
-https://<你的画布站点地址>/canvas?mode=new#agentUrl=<Local URL>&agentToken=<Connect token>
+https://<你的画布站点地址>/canvas?mode=new#agentUrl=<Local URL>
 ```
 
 ## 本地版
@@ -45,10 +43,10 @@ npm run build
 node dist/index.js
 ```
 
-3. 从启动输出取得 `Local URL` 和 `Connect token`，在浏览器打开：
+3. 在浏览器打开：
 
 ```text
-<Vite Local 地址>/canvas?mode=new#agentUrl=<Local URL>&agentToken=<Connect token>
+<Vite Local 地址>/canvas?mode=new#agentUrl=<Local URL>
 ```
 
 ## MCP 与连接地址
@@ -59,7 +57,7 @@ node dist/index.js
 <client> mcp add infinite-canvas -- node /path/to/infinite-canvas/canvas-agent/dist/index.js mcp
 ```
 
-上面启动的普通 Canvas Agent 负责提供 `Local URL` 和 `Connect token`，并与 MCP 进程读取同一份本地配置。画布网页打开后会自动连接本地 Agent；带 `#agentUrl=&agentToken=` 打开时会自动保存地址和 token，无需手动填写。也可以在网页「配置 → 本地 Agent 连接」中手动填写。
+本地 Canvas Agent 不使用 token，默认只接受本机访问，并按网页 Origin 允许列表放行；MCP 进程与本地服务读取同一份配置。画布网页打开后会自动连接本地 Agent（地址默认 `http://127.0.0.1:17371`）；带 `#agentUrl=` 打开时会自动保存地址。也可以在网页「配置 → 本地 Agent 连接」中手动填写。MCP 客户端拉起 `canvas-agent mcp` 时若本地服务未运行会自动在后台拉起，无需手动保持终端运行。
 
 ## 打开模式
 
