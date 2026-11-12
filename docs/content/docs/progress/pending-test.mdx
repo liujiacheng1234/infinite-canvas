@@ -38,6 +38,7 @@ The current release needs manual verification in these areas:
 - Canvas Agent 断开连线：`canvas_disconnect_nodes` 传入 from/to 应断开对应连线；`canvas_export_snapshot` 工具应不再存在。
 - 旧版网页（协议版本 6）连接新版 Canvas Agent 应提示协议不匹配，需同步更新前端和 Agent。
 - Canvas Agent 看图链路：连接画布后调用 `canvas_read_image` 应返回图片内容（Codex 能看到图），不再报「未知工具」；入参 nodeId 支持短引用与真实 id，多图节点可用 imageId 指定备选图。
+- 重试丢图修复：图片生成失败后对整节点重试，成功后新图应登记进 metadata.images（整节点重试优先复用失败槽位 id，不残留死槽），canvas_read_image 默认即可读到主图；向无内容的空图节点生成同样应正确登记槽位；多备选节点重试单个槽位仍只替换该槽位，不受影响。
 - Agent 文本更新守卫：对图片、视频、配置等非文本节点调用 `canvas_update_node_text` 时只应更新标题，`metadata.content` 保持原媒体地址不变；对文本节点仍应正常写入正文。
 - 图片参考链读取：图片字段的 storageKey 指向的 IndexedDB 原图应优先于 dataUrl/url 使用；storageKey 对应 Blob 缺失时回退到 dataUrl/url；生成参考、插件宿主等链路不应拿到被污染的旧地址。
 - 画布大数量节点/连线性能：在包含几十上百个节点和连线的画布上拖拽节点、框选、滚轮缩放、悬停应明显流畅（不再每帧重渲染全部节点）；同时回归：点击节点打开的下方提示词面板内容正确（`@` 引用列表、参考内容栏、生成中状态实时更新）、连线后面板输入列表立即刷新、文本节点双击编辑时 `@` 引用正常解析、参考选择模式的可选/禁用高亮正确、拖拽结束后左侧元素列表刷新为最新位置状态。

@@ -2235,7 +2235,8 @@ function InfiniteCanvasPage() {
                                 setNodes((prev) =>
                                     prev.map((node) => {
                                         if (node.id !== rootId) return node;
-                                        const images = node.metadata?.images?.map((image) => (image.id === imageId ? item : image)) || [];
+                                        const prevImages = node.metadata?.images || [];
+                                        const images = prevImages.some((image) => image.id === imageId) ? prevImages.map((image) => (image.id === imageId ? item : image)) : [...prevImages, item];
                                         if (node.metadata?.primaryImageId) return { ...node, metadata: { ...node.metadata, images } };
                                         const center = { x: node.position.x + node.width / 2, y: node.position.y + node.height / 2 };
                                         return {
@@ -2617,7 +2618,7 @@ function InfiniteCanvasPage() {
                 const uploadedImage = await uploadImage(image.dataUrl, { signal: controller.signal });
                 const imageConfig = NODE_DEFAULT_SIZE[CanvasNodeType.Image];
                 const retryImage: CanvasNodeImage = {
-                    id: imageId || node.metadata?.primaryImageId || nanoid(),
+                    id: imageId || node.metadata?.primaryImageId || node.metadata?.images?.find((image) => image.status === NODE_STATUS_ERROR)?.id || nanoid(),
                     status: NODE_STATUS_SUCCESS,
                     content: uploadedImage.url,
                     storageKey: uploadedImage.storageKey,
@@ -2650,7 +2651,7 @@ function InfiniteCanvasPage() {
                             metadata: {
                                 ...item.metadata,
                                 ...(makePrimary ? imageMetadata(uploadedImage) : { status: NODE_STATUS_SUCCESS }),
-                                images: item.metadata?.images?.map((current) => (current.id === retryImage.id ? retryImage : current)),
+                                images: item.metadata?.images?.some((current) => current.id === retryImage.id) ? item.metadata.images.map((current) => (current.id === retryImage.id ? retryImage : current)) : [...(item.metadata?.images || []), retryImage],
                                 primaryImageId: makePrimary ? retryImage.id : item.metadata?.primaryImageId,
                                 prompt,
                                 ...generationMetadata,
